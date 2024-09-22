@@ -1,7 +1,6 @@
 use std::{
-    fmt, fs,
+    fs,
     io::{self, Write},
-    path::Display,
 };
 
 enum TokenType {
@@ -54,12 +53,12 @@ enum TokenType {
     EOF,
 }
 
-struct Token {
+struct Token<'a> {
     tokentype: TokenType,
-    lexeme: String,
+    lexeme: &'a str,
     // No idea what this should actually be
     // book has it as object
-    literal: String,
+    literal: &'a str,
     line: u32,
 }
 
@@ -73,12 +72,12 @@ struct Token {
 //     }
 // }
 
-fn is_at_end(current: &u32, input: &String) {
-    return;
+fn print_error(line: u32, message: String) {
+    eprintln!("Error: [Line {}]>> {}", line, message);
 }
 
 fn scan_tokens(input: &String, start: u32) {
-    let had_error = false;
+    let mut had_error = false;
     let mut tokens: Vec<Token> = Vec::new();
     let mut line: u32 = 1;
     let mut current = start;
@@ -86,21 +85,43 @@ fn scan_tokens(input: &String, start: u32) {
         .len()
         .try_into()
         .expect("Length of input shouldbe able to be converted into u32");
+    let mut chars = input.chars();
 
-    while current < length {
-        scan_one();
+    while let Some(char) = chars.next() {
+        let token_type = match char {
+            '(' => TokenType::LeftParen,
+            ')' => TokenType::RightParen,
+            '{' => TokenType::LeftBrace,
+            '}' => TokenType::RightBrace,
+            ',' => TokenType::Comma,
+            '.' => TokenType::Dot,
+            '-' => TokenType::Minus,
+            '+' => TokenType::Plus,
+            ';' => TokenType::Semicolon,
+            '*' => TokenType::Star,
+            _ => {
+                print_error(line, format!("Unexpected character: {}", char));
+                had_error = true;
+                continue;
+            }
+        };
+
+        tokens.push(Token {
+            tokentype: token_type,
+            lexeme: "",
+            literal: "",
+            line: line,
+        });
         break;
     }
 
     tokens.push(Token {
         tokentype: TokenType::EOF,
-        lexeme: "".to_string(),
-        literal: "".to_string(),
+        lexeme: "",
+        literal: "",
         line: line,
     });
 }
-
-fn scan_one() {}
 
 pub fn run_file(filename: &String) -> Result<(), io::Error> {
     println!("im a runnin {}", filename);
