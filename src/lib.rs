@@ -60,7 +60,7 @@ struct Token {
     // No idea what this should actually be
     // book has it as object
     literal: String,
-    line: i32,
+    line: u32,
 }
 
 // impl fmt::Display for Token {
@@ -73,17 +73,40 @@ struct Token {
 //     }
 // }
 
-fn scan(input: &String) {
-    let had_error = false;
-
-    println!()
+fn is_at_end(current: &u32, input: &String) {
+    return;
 }
+
+fn scan_tokens(input: &String, start: u32) {
+    let had_error = false;
+    let mut tokens: Vec<Token> = Vec::new();
+    let mut line: u32 = 1;
+    let mut current = start;
+    let length: u32 = input
+        .len()
+        .try_into()
+        .expect("Length of input shouldbe able to be converted into u32");
+
+    while current < length {
+        scan_one();
+        break;
+    }
+
+    tokens.push(Token {
+        tokentype: TokenType::EOF,
+        lexeme: "".to_string(),
+        literal: "".to_string(),
+        line: line,
+    });
+}
+
+fn scan_one() {}
 
 pub fn run_file(filename: &String) -> Result<(), io::Error> {
     println!("im a runnin {}", filename);
     let contents = fs::read_to_string(filename)?;
 
-    scan(&contents);
+    scan_tokens(&contents, 0);
     Ok(())
 }
 
@@ -97,10 +120,5 @@ pub fn run_proompt() -> Result<(), io::Error> {
         io::stdin().read_line(&mut buffer)?;
 
         let mut inputs = buffer.split_whitespace();
-
-        let command = match inputs.next() {
-            Some(s) => s,
-            None => continue,
-        };
     }
 }
