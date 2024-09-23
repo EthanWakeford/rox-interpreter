@@ -1,6 +1,8 @@
 use std::{
     fs,
     io::{self, Write},
+    iter::Peekable,
+    str::Chars,
 };
 
 enum TokenType {
@@ -72,55 +74,72 @@ struct Token<'a> {
 //     }
 // }
 
+struct Scanner<'a> {
+    tokens: Vec<Token<'a>>,
+    chars: Peekable<Chars<'a>>,
+    start: u32,
+    current: u32,
+    line: u32,
+    length: u32,
+}
+
+impl Scanner<'_> {
+    fn scan_tokens(mut self) {
+        let mut had_error = false;
+
+        while let Some(char) = self.chars.next() {
+            let token_type = match char {
+                '(' => TokenType::LeftParen,
+                ')' => TokenType::RightParen,
+                '{' => TokenType::LeftBrace,
+                '}' => TokenType::RightBrace,
+                ',' => TokenType::Comma,
+                '.' => TokenType::Dot,
+                '-' => TokenType::Minus,
+                '+' => TokenType::Plus,
+                ';' => TokenType::Semicolon,
+                '*' => TokenType::Star,
+                _ => {
+                    print_error(self.line, format!("Unexpected character: {}", char));
+                    had_error = true;
+                    continue;
+                }
+            };
+
+            self.tokens.push(Token {
+                tokentype: token_type,
+                lexeme: "",
+                literal: "",
+                line: self.line,
+            });
+            break;
+        }
+
+        self.tokens.push(Token {
+            tokentype: TokenType::EOF,
+            lexeme: "",
+            literal: "",
+            line: self.line,
+        });
+    }
+
+    fn scan_token(self) {}
+}
+
 fn print_error(line: u32, message: String) {
     eprintln!("Error: [Line {}]>> {}", line, message);
 }
 
 fn scan_tokens(input: &String, start: u32) {
     let mut had_error = false;
-    let mut tokens: Vec<Token> = Vec::new();
-    let mut line: u32 = 1;
-    let mut current = start;
-    let length: u32 = input
-        .len()
-        .try_into()
-        .expect("Length of input shouldbe able to be converted into u32");
-    let mut chars = input.chars();
-
-    while let Some(char) = chars.next() {
-        let token_type = match char {
-            '(' => TokenType::LeftParen,
-            ')' => TokenType::RightParen,
-            '{' => TokenType::LeftBrace,
-            '}' => TokenType::RightBrace,
-            ',' => TokenType::Comma,
-            '.' => TokenType::Dot,
-            '-' => TokenType::Minus,
-            '+' => TokenType::Plus,
-            ';' => TokenType::Semicolon,
-            '*' => TokenType::Star,
-            _ => {
-                print_error(line, format!("Unexpected character: {}", char));
-                had_error = true;
-                continue;
-            }
-        };
-
-        tokens.push(Token {
-            tokentype: token_type,
-            lexeme: "",
-            literal: "",
-            line: line,
-        });
-        break;
-    }
-
-    tokens.push(Token {
-        tokentype: TokenType::EOF,
-        lexeme: "",
-        literal: "",
-        line: line,
-    });
+    // let mut tokens: Vec<Token> = Vec::new();
+    // let mut line: u32 = 1;
+    // let mut current = start;
+    // let length: u32 = input
+    // .len()
+    // .try_into()
+    // .expect("Length of input shouldbe able to be converted into u32");
+    // let mut chars = input.chars().peekable();
 }
 
 pub fn run_file(filename: &String) -> Result<(), io::Error> {
