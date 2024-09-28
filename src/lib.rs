@@ -55,12 +55,12 @@ enum TokenType {
     EOF,
 }
 
-struct Token<'a> {
+struct Token {
     tokentype: TokenType,
-    lexeme: &'a str,
+    // lexeme: String,
     // No idea what this should actually be
     // book has it as object
-    literal: &'a str,
+    literal: String,
     line: u32,
 }
 
@@ -70,12 +70,12 @@ struct Token<'a> {
 //             f,
 //             "({}, {}, {}, {})",
 //             self.tokentype, self.lexeme, self.literal, self.line
-//         )
+//         )x
 //     }
 // }
 
 struct Scanner<'a> {
-    tokens: Vec<Token<'a>>,
+    tokens: Vec<Token>,
     chars: Peekable<Chars<'a>>,
     start: u32,
     current: u32,
@@ -88,6 +88,10 @@ impl Scanner<'_> {
         let mut had_error = false;
 
         while let Some(char) = self.chars.next() {
+            // Literal used for tokens that need it
+            // String, number, etc.
+            let mut literal = String::new();
+
             let token_type = match char {
                 '(' => TokenType::LeftParen,
                 ')' => TokenType::RightParen,
@@ -99,6 +103,89 @@ impl Scanner<'_> {
                 '+' => TokenType::Plus,
                 ';' => TokenType::Semicolon,
                 '*' => TokenType::Star,
+                '!' => match self.chars.peek().unwrap_or(&' ') {
+                    '=' => {
+                        self.chars.next();
+                        TokenType::BangEqual
+                    }
+                    _ => TokenType::Bang,
+                },
+                '=' => match self.chars.peek().unwrap_or(&' ') {
+                    '=' => {
+                        self.chars.next();
+                        TokenType::EqualEqual
+                    }
+                    _ => TokenType::Equal,
+                },
+                '<' => match self.chars.peek().unwrap_or(&' ') {
+                    '=' => {
+                        self.chars.next();
+                        TokenType::LessEqual
+                    }
+                    _ => TokenType::Less,
+                },
+                '>' => match self.chars.peek().unwrap_or(&' ') {
+                    '=' => {
+                        self.chars.next();
+                        TokenType::GreaterEqual
+                    }
+                    _ => TokenType::Greater,
+                },
+                '/' => match self.chars.peek().unwrap_or(&' ') {
+                    // comment found
+                    '/' => {
+                        while self.chars.peek().unwrap_or(&' ') != &'\n' {
+                            self.chars.next();
+                        }
+                        continue;
+                    }
+                    _ => TokenType::Slash,
+                },
+                ' ' => {
+                    continue;
+                }
+                '\r' => {
+                    continue;
+                }
+                '\t' => {
+                    continue;
+                }
+                '\n' => {
+                    self.line += 1;
+                    continue;
+                }
+                '"' => {
+                    // Iteraties through string and stores literal
+                    loop {
+                        let c = match self.chars.peek() {
+                            Some(c) => c,
+                            // None would mean EOF here
+                            None => {
+                                print_error(self.line, "Unterminated String".to_string());
+                                return;
+                            }
+                        };
+
+                        if c == &'"' {
+                            // Consume closing parenthesis
+                            self.chars.next();
+
+                            // String is finished
+                            break;
+                        }
+
+                        // Newlines ARE allowed
+                        if c == &'\n' {
+                            self.line += 1;
+                        }
+
+                        literal.push(*c);
+
+                        // Consume next value as we've already used it
+                        self.chars.next();
+                    }
+                    TokenType::String
+                }
                 _ => {
                     print_error(self.line, format!("Unexpected character: {}", char));
                     had_error = true;
@@ -108,17 +195,18 @@ impl Scanner<'_> {
 
             self.tokens.push(Token {
                 tokentype: token_type,
-                lexeme: "",
-                literal: "",
+                // lexeme: literal,
+                literal: "".to_string(),
                 line: self.line,
             });
             break;
         }
 
+        // End with EOF
         self.tokens.push(Token {
             tokentype: TokenType::EOF,
-            lexeme: "",
-            literal: "",
+            // lexeme: "".to_string(),
+            literal: "".to_string(),
             line: self.line,
         });
     }
