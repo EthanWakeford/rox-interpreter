@@ -57,9 +57,10 @@ enum TokenType {
 }
 
 enum Literal {
-    Number(f32),
+    Number(f64),
     String(String),
     Symbol,
+    Keyword,
 }
 
 struct Token {
@@ -102,7 +103,7 @@ struct Scanner<'a> {
 }
 
 impl Scanner<'_> {
-    fn scan_tokens(&mut self) -> Result<&Vec<Token>, ScanError> {
+    fn scan_tokens(&mut self) -> Result<&Vec<Token>, Box<dyn Error>> {
         let mut had_error = false;
 
         while let Some(char) = self.chars.next() {
@@ -130,7 +131,7 @@ impl Scanner<'_> {
         Ok(&self.tokens)
     }
 
-    fn scan_token(&mut self, char: char) -> Result<Option<(TokenType, Literal)>, ScanError> {
+    fn scan_token(&mut self, char: char) -> Result<Option<(TokenType, Literal)>, Box<dyn Error>> {
         match char {
             '(' => Ok(Some((TokenType::LeftParen, Literal::Symbol))),
             ')' => Ok(Some((TokenType::RightParen, Literal::Symbol))),
@@ -181,11 +182,8 @@ impl Scanner<'_> {
                 _ => Ok(Some((TokenType::Slash, Literal::Symbol))),
             },
             ' ' => Ok(None),
-
             '\r' => Ok(None),
-
             '\t' => Ok(None),
-
             '\n' => {
                 self.line += 1;
                 Ok(None)
@@ -198,13 +196,9 @@ impl Scanner<'_> {
                         Some(c) => c,
                         // None would mean EOF here
                         None => {
-                            return Err(ScanError::new("Unterminated String"));
+                            return Err(Box::new(ScanError::new("Unterminated String")));
                         }
                     };
-                    // let c = self.chars.peek();
-                    // if let None = c {
-                    //     Err("Unterminated String")
-                    // }
 
                     if c == &'"' {
                         // Consume closing parenthesis
@@ -224,11 +218,108 @@ impl Scanner<'_> {
                     // Consume next value as we've already used it
                     self.chars.next();
                 }
-                Ok(Some((TokenType::String, Literal::Symbol)))
+
+                // Keyword matching
+                match literal.as_str() {
+                    "and" => {
+                        return Ok(Some((TokenType::And, Literal::Keyword)));
+                    }
+                    "class" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "else" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "false" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "for" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "fun" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "if" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "nil" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "or" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "print" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "return" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "super" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "this" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "true" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "var" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    "while" => {
+                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                    }
+                    _ => (),
+                }
+
+                Ok(Some((TokenType::String, Literal::String(literal))))
             }
-            _ => Err(ScanError {
+            '0'..='9' => {
+                let mut literal = String::new();
+                let mut found_dot = false;
+
+                loop {
+                    let c = match self.chars.peek() {
+                        Some(c) => c,
+                        // EOF
+                        None => {
+                            break;
+                        }
+                    };
+
+                    match c {
+                        '0'..='9' => {
+                            literal.push(*c);
+                            self.chars.next();
+                        }
+                        '.' => {
+                            if found_dot {
+                                // Only one dot allowed in num
+                                return Err(Box::new(ScanError::new("Unexpected Character '.'")));
+                            }
+
+                            found_dot = true;
+                            literal.push(*c);
+                            self.chars.next();
+                        }
+                        _ => {
+                            break;
+                        }
+                    }
+                }
+
+                // Numbers are not allowd to end with dot
+                if literal.ends_with('.') {
+                    return Err(Box::new(ScanError::new("Unexpected Character '.'")));
+                };
+
+                let literal = literal.parse::<f64>()?;
+
+                Ok(Some((TokenType::Number, Literal::Number(literal))))
+            }
+            _ => Err(Box::new(ScanError {
                 message: "Unkown Character Found".to_string(),
-            }),
+            })),
         }
     }
 }
