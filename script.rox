@@ -1,0 +1,4 @@
+print "hello world"
+let "x" = 21
+let "y" = "x" + 11
+print "y"
