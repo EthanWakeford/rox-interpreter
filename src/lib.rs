@@ -1,5 +1,6 @@
 use std::{
-    fs,
+    error::Error,
+    fmt, fs,
     io::{self, Write},
     iter::Peekable,
     str::Chars,
@@ -55,24 +56,41 @@ enum TokenType {
     EOF,
 }
 
+enum Literal {
+    Number(f32),
+    String(String),
+    Symbol,
+}
+
 struct Token {
     tokentype: TokenType,
     // lexeme: String,
     // No idea what this should actually be
     // book has it as object
-    literal: String,
+    literal: Literal,
     line: u32,
 }
 
-// impl fmt::Display for Token {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(
-//             f,
-//             "({}, {}, {}, {})",
-//             self.tokentype, self.lexeme, self.literal, self.line
-//         )x
-//     }
-// }
+#[derive(Debug)]
+struct ScanError {
+    message: String,
+}
+
+impl ScanError {
+    fn new(message: &str) -> ScanError {
+        ScanError {
+            message: message.to_string(),
+        }
+    }
+}
+
+impl fmt::Display for ScanError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl Error for ScanError {}
 
 struct Scanner<'a> {
     tokens: Vec<Token>,
@@ -84,134 +102,135 @@ struct Scanner<'a> {
 }
 
 impl Scanner<'_> {
-    fn scan_tokens(mut self) {
+    fn scan_tokens(&mut self) -> Result<&Vec<Token>, ScanError> {
         let mut had_error = false;
 
         while let Some(char) = self.chars.next() {
-            // Literal used for tokens that need it
-            // String, number, etc.
-            let mut literal = String::new();
-
-            let token_type = match char {
-                '(' => TokenType::LeftParen,
-                ')' => TokenType::RightParen,
-                '{' => TokenType::LeftBrace,
-                '}' => TokenType::RightBrace,
-                ',' => TokenType::Comma,
-                '.' => TokenType::Dot,
-                '-' => TokenType::Minus,
-                '+' => TokenType::Plus,
-                ';' => TokenType::Semicolon,
-                '*' => TokenType::Star,
-                '!' => match self.chars.peek().unwrap_or(&' ') {
-                    '=' => {
-                        self.chars.next();
-                        TokenType::BangEqual
-                    }
-                    _ => TokenType::Bang,
-                },
-                '=' => match self.chars.peek().unwrap_or(&' ') {
-                    '=' => {
-                        self.chars.next();
-                        TokenType::EqualEqual
-                    }
-                    _ => TokenType::Equal,
-                },
-                '<' => match self.chars.peek().unwrap_or(&' ') {
-                    '=' => {
-                        self.chars.next();
-                        TokenType::LessEqual
-                    }
-                    _ => TokenType::Less,
-                },
-                '>' => match self.chars.peek().unwrap_or(&' ') {
-                    '=' => {
-                        self.chars.next();
-                        TokenType::GreaterEqual
-                    }
-                    _ => TokenType::Greater,
-                },
-                '/' => match self.chars.peek().unwrap_or(&' ') {
-                    // comment found
-                    '/' => {
-                        while self.chars.peek().unwrap_or(&' ') != &'\n' {
-                            self.chars.next();
-                        }
-                        continue;
-                    }
-                    _ => TokenType::Slash,
-                },
-                ' ' => {
-                    continue;
-                }
-                '\r' => {
-                    continue;
-                }
-                '\t' => {
-                    continue;
-                }
-                '\n' => {
-                    self.line += 1;
-                    continue;
-                }
-                '"' => {
-                    // Iteraties through string and stores literal
-                    loop {
-                        let c = match self.chars.peek() {
-                            Some(c) => c,
-                            // None would mean EOF here
-                            None => {
-                                print_error(self.line, "Unterminated String".to_string());
-                                return;
-                            }
-                        };
-
-                        if c == &'"' {
-                            // Consume closing parenthesis
-                            self.chars.next();
-
-                            // String is finished
-                            break;
-                        }
-
-                        // Newlines ARE allowed
-                        if c == &'\n' {
-                            self.line += 1;
-                        }
-
-                        literal.push(*c);
-
-                        // Consume next value as we've already used it
-                        self.chars.next();
-                    }
-                    TokenType::String
-                }
-                _ => {
-                    print_error(self.line, format!("Unexpected character: {}", char));
-                    had_error = true;
-                    continue;
-                }
+            let (token_type, literal) = match self.scan_token(char)? {
+                Some((token_type, literal)) => (token_type, literal),
+                None => continue,
             };
 
             self.tokens.push(Token {
                 tokentype: token_type,
                 // lexeme: literal,
-                literal: "".to_string(),
+                literal: literal,
                 line: self.line,
             });
-            break;
         }
 
         // End with EOF
         self.tokens.push(Token {
             tokentype: TokenType::EOF,
             // lexeme: "".to_string(),
-            literal: "".to_string(),
+            literal: Literal::Symbol,
             line: self.line,
         });
+
+        Ok(&self.tokens)
     }
 
-    fn scan_token(self) {}
+    fn scan_token(&mut self, char: char) -> Result<Option<(TokenType, Literal)>, ScanError> {
+        match char {
+            '(' => Ok(Some((TokenType::LeftParen, Literal::Symbol))),
+            ')' => Ok(Some((TokenType::RightParen, Literal::Symbol))),
+            '{' => Ok(Some((TokenType::LeftBrace, Literal::Symbol))),
+            '}' => Ok(Some((TokenType::RightBrace, Literal::Symbol))),
+            ',' => Ok(Some((TokenType::Comma, Literal::Symbol))),
+            '.' => Ok(Some((TokenType::Dot, Literal::Symbol))),
+            '-' => Ok(Some((TokenType::Minus, Literal::Symbol))),
+            '+' => Ok(Some((TokenType::Plus, Literal::Symbol))),
+            ';' => Ok(Some((TokenType::Semicolon, Literal::Symbol))),
+            '*' => Ok(Some((TokenType::Star, Literal::Symbol))),
+            '!' => match self.chars.peek().unwrap_or(&' ') {
+                '=' => {
+                    self.chars.next();
+                    Ok(Some((TokenType::BangEqual, Literal::Symbol)))
+                }
+                _ => Ok(Some((TokenType::Bang, Literal::Symbol))),
+            },
+            '=' => match self.chars.peek().unwrap_or(&' ') {
+                '=' => {
+                    self.chars.next();
+                    Ok(Some((TokenType::EqualEqual, Literal::Symbol)))
+                }
+                _ => Ok(Some((TokenType::Equal, Literal::Symbol))),
+            },
+            '<' => match self.chars.peek().unwrap_or(&' ') {
+                '=' => {
+                    self.chars.next();
+                    Ok(Some((TokenType::LessEqual, Literal::Symbol)))
+                }
+                _ => Ok(Some((TokenType::Less, Literal::Symbol))),
+            },
+            '>' => match self.chars.peek().unwrap_or(&' ') {
+                '=' => {
+                    self.chars.next();
+                    Ok(Some((TokenType::GreaterEqual, Literal::Symbol)))
+                }
+                _ => Ok(Some((TokenType::Greater, Literal::Symbol))),
+            },
+            '/' => match self.chars.peek().unwrap_or(&' ') {
+                // comment found
+                '/' => {
+                    while self.chars.peek().unwrap_or(&' ') != &'\n' {
+                        self.chars.next();
+                    }
+                    Ok(None)
+                }
+                _ => Ok(Some((TokenType::Slash, Literal::Symbol))),
+            },
+            ' ' => Ok(None),
+
+            '\r' => Ok(None),
+
+            '\t' => Ok(None),
+
+            '\n' => {
+                self.line += 1;
+                Ok(None)
+            }
+            '"' => {
+                let mut literal = String::new();
+                // Iteraties through string and stores literal
+                loop {
+                    let c = match self.chars.peek() {
+                        Some(c) => c,
+                        // None would mean EOF here
+                        None => {
+                            return Err(ScanError::new("Unterminated String"));
+                        }
+                    };
+                    // let c = self.chars.peek();
+                    // if let None = c {
+                    //     Err("Unterminated String")
+                    // }
+
+                    if c == &'"' {
+                        // Consume closing parenthesis
+                        self.chars.next();
+
+                        // String is finished
+                        break;
+                    }
+
+                    // Newlines ARE allowed
+                    if c == &'\n' {
+                        self.line += 1;
+                    }
+
+                    literal.push(*c);
+
+                    // Consume next value as we've already used it
+                    self.chars.next();
+                }
+                Ok(Some((TokenType::String, Literal::Symbol)))
+            }
+            _ => Err(ScanError {
+                message: "Unkown Character Found".to_string(),
+            }),
+        }
+    }
 }
 
 fn print_error(line: u32, message: String) {
