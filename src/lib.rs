@@ -7,6 +7,7 @@ use std::{
 mod grammar;
 mod parser;
 mod scanner;
+use parser::Parser;
 use scanner::Scanner;
 
 pub fn print_error(line: u32, message: String) {
@@ -19,9 +20,13 @@ pub fn run_file(filename: &String) -> Result<(), Box<dyn Error>> {
 
     let mut scanner = Scanner::new(&input);
 
-    let output = scanner.scan_tokens()?;
+    let tokens = scanner.scan_tokens()?;
 
-    println!("{:?}", output);
+    let parser = Parser::new(tokens);
+
+    parser.parse();
+
+    // println!("{:?}", tokens);
     Ok(())
 }
 
@@ -36,8 +41,12 @@ pub fn run_proompt() -> Result<(), Box<dyn Error>> {
 
         let mut scanner = Scanner::new(&input);
 
-        let output = scanner.scan_tokens()?;
+        let tokens = scanner.scan_tokens()?;
 
-        println!("{:?}", output);
+        let parser = Parser::new(tokens);
+
+        parser.parse();
+
+        // println!("{:?}", tokens);
     }
 }

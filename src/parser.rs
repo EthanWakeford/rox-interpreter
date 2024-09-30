@@ -1,32 +1,40 @@
 use crate::{grammar::*, scanner::Token};
 
-pub struct Parser {
-    tokens: Vec<Token>,
+pub struct Parser<'a> {
+    tokens: &'a Vec<Token>,
     current: i64,
 }
 
-impl Parser {
-    fn new(tokens: Vec<Token>) -> Parser {
+impl Parser<'_> {
+    pub fn new(tokens: &Vec<Token>) -> Parser {
         Parser {
-            tokens: tokens,
+            tokens: &tokens,
             current: 0,
         }
     }
 
-    fn parse(&self) {
-        let mut expr= Expr::new(&self.tokens);
+    pub fn parse(&self) {
+        let expr = Expr::new(&self.tokens);
 
-    //     for t in &self.tokens {
-    //         print!("asdf")
-    //     }
-    // }
+        match expr {
+            Err(e) => {
+                eprintln!("{}", e);
+            }
+            Ok(expr) => {
+                println!("{:?}", expr);
+            }
+        }
 
-    // fn expr(&self) {
-    //     self.equality()
-    // }
+        //     for t in &self.tokens {
+        //         print!("asdf")
+        //     }
+        // }
 
-    // fn equality(&self) {
-    //     let expr = self.comparison();
+        // fn expr(&self) {
+        //     self.equality()
+        // }
 
+        // fn equality(&self) {
+        //     let expr = self.comparison();
     }
 }

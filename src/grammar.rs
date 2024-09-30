@@ -2,6 +2,7 @@ use std::error::Error;
 
 use crate::scanner::{ScanError, Token, TokenType};
 
+#[derive(Debug)]
 pub enum Expr {
     Literal(Literal),
     // Grouping(Grouping),
@@ -29,6 +30,7 @@ impl Expr {
     }
 }
 
+#[derive(Debug)]
 pub enum Primary {
     NUMBER(f64),
     STRING(String),
@@ -68,40 +70,86 @@ impl Primary {
     }
 }
 
+#[derive(Debug)]
 enum UnaryOp {
     Minus,
     Bang,
 }
-enum UnaryOrExpr {
-    Unary(Box<Unary>),
-    Expr(Box<Expr>),
-}
-pub struct Unary(UnaryOp, UnaryOrExpr);
 
+#[derive(Debug)]
+enum UnaryOrPrimary {
+    Unary(Box<Unary>),
+    Primary(Primary),
+}
+
+#[derive(Debug)]
+pub struct Unary(UnaryOp, UnaryOrPrimary);
+
+impl Unary {
+    pub fn new(tokens: &Vec<Token>) -> Result<Unary, Box<dyn Error>> {
+        let un_op = match tokens.get(0) {
+            Some(op) => match op.token_type {
+                TokenType::Minus => UnaryOp::Minus,
+                TokenType::Bang => UnaryOp::Bang,
+                _ => {
+                    let message = format!(
+                        "Unexpected Token {:?} Found, Exprected Unary Operator",
+                        op.token_type
+                    );
+                    return Err(Box::new(ScanError::new("")));
+                }
+            },
+            None => {
+                return Err(Box::new(ScanError::new(
+                    "No Token Found, Exprected Unary Operator",
+                )));
+            }
+        };
+
+        if tokens.len() > 2 {
+            // Must be an Unary
+            let primary = Primary::new(tokens)?;
+
+            return Ok(Unary(un_op, UnaryOrPrimary::Primary(primary)));
+        }
+
+        // Hard coding this to always be a primary for now
+        let primary = Primary::new(tokens)?;
+        return Ok(Unary(un_op, UnaryOrPrimary::Primary(primary)));
+    }
+}
+
+#[derive(Debug)]
 enum FactorOp {
     Slash,
     Star,
 }
 
+#[derive(Debug)]
 enum UnaryOrFactorOp {
     FactorOp(FactorOp),
     Unary(Unary),
 }
 
+#[derive(Debug)]
 pub struct Factor(Unary, UnaryOrFactorOp);
 
+#[derive(Debug)]
 enum TermOp {
     Plus,
     Minus,
 }
 
+#[derive(Debug)]
 enum FactorOrTermOp {
     Factor(Factor),
     TermOp(TermOp),
 }
 
+#[derive(Debug)]
 pub struct Term(Factor, FactorOrTermOp);
 
+#[derive(Debug)]
 enum ComparisonOp {
     Greater,
     GreaterEqual,
@@ -109,25 +157,31 @@ enum ComparisonOp {
     LessEqual,
 }
 
+#[derive(Debug)]
 enum TermOrComparisonOp {
     Term(Term),
     ComparisionOp(ComparisonOp),
 }
 
+#[derive(Debug)]
 pub struct Comparison(Term, TermOrComparisonOp);
 
+#[derive(Debug)]
 enum EqualityOp {
     BangEqual,
     EqualEqual,
 }
 
+#[derive(Debug)]
 enum ComparisonOrEqualityOp {
     Comparison,
     EqualityOp,
 }
 
+#[derive(Debug)]
 pub struct Equality(Comparison, ComparisonOrEqualityOp);
 
+#[derive(Debug)]
 pub enum Literal {
     NUMBER(f64),
     STRING(String),
@@ -154,8 +208,10 @@ impl Literal {
 }
 
 // // Not sure about this one but we'll leave for nows
+#[derive(Debug)]
 pub struct Grouping(Box<Expr>);
 
+#[derive(Debug)]
 pub struct Binary(Box<Expr>, Operator, Box<Expr>);
 
 impl Binary {
@@ -197,6 +253,7 @@ impl Binary {
     }
 }
 
+#[derive(Debug)]
 pub enum Operator {
     Minus,
     Plus,
