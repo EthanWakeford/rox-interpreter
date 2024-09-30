@@ -4,6 +4,8 @@ use std::{
     io::{self, Write},
 };
 
+mod grammar;
+mod parser;
 mod scanner;
 use scanner::Scanner;
 

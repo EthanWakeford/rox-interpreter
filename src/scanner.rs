@@ -1,7 +1,7 @@
 use std::{error::Error, fmt, iter::Peekable, str::Chars};
 
 #[derive(Debug)]
-enum TokenType {
+pub enum TokenType {
     // Single-character tokens.
     LeftParen,
     RightParen,
@@ -27,8 +27,8 @@ enum TokenType {
 
     // Literals.
     Identifier,
-    String,
-    Number,
+    String(String),
+    Number(f64),
 
     // Keywords.
     And,
@@ -52,30 +52,19 @@ enum TokenType {
 }
 
 #[derive(Debug)]
-enum Literal {
-    Number(f64),
-    String(String),
-    Symbol,
-    Keyword,
-}
-
-#[derive(Debug)]
 pub struct Token {
-    tokentype: TokenType,
+    pub token_type: TokenType,
     // lexeme: String,
-    // No idea what this should actually be
-    // book has it as object
-    literal: Literal,
-    line: u32,
+    pub line: u64,
 }
 
 #[derive(Debug)]
-struct ScanError {
+pub struct ScanError {
     message: String,
 }
 
 impl ScanError {
-    fn new<T: Into<String>>(message: T) -> ScanError {
+    pub fn new<T: Into<String>>(message: T) -> ScanError {
         ScanError {
             message: message.into(),
         }
@@ -95,7 +84,7 @@ pub struct Scanner<'a> {
     chars: Peekable<Chars<'a>>,
     // start: u32,
     // current: u32,
-    line: u32,
+    line: u64,
     // length: u32,
 }
 
@@ -118,69 +107,67 @@ impl Scanner<'_> {
         // let mut had_error = false;
 
         while let Some(char) = self.chars.next() {
-            let (token_type, literal) = match self.scan_token(char)? {
-                Some((token_type, literal)) => (token_type, literal),
+            let token_type = match self.scan_token(char)? {
+                Some(token_type) => token_type,
                 None => continue,
             };
 
             self.tokens.push(Token {
-                tokentype: token_type,
+                token_type,
                 // lexeme: literal,
-                literal: literal,
                 line: self.line,
             });
         }
 
         // End with EOF
         self.tokens.push(Token {
-            tokentype: TokenType::EOF,
+            token_type: TokenType::EOF,
             // lexeme: "".to_string(),
-            literal: Literal::Symbol,
             line: self.line,
         });
 
         Ok(&self.tokens)
     }
 
-    fn scan_token(&mut self, char: char) -> Result<Option<(TokenType, Literal)>, Box<dyn Error>> {
+    fn scan_token(&mut self, char: char) -> Result<Option<TokenType>, Box<dyn Error>> {
         match char {
-            '(' => Ok(Some((TokenType::LeftParen, Literal::Symbol))),
-            ')' => Ok(Some((TokenType::RightParen, Literal::Symbol))),
-            '{' => Ok(Some((TokenType::LeftBrace, Literal::Symbol))),
-            '}' => Ok(Some((TokenType::RightBrace, Literal::Symbol))),
-            ',' => Ok(Some((TokenType::Comma, Literal::Symbol))),
-            '.' => Ok(Some((TokenType::Dot, Literal::Symbol))),
-            '-' => Ok(Some((TokenType::Minus, Literal::Symbol))),
-            '+' => Ok(Some((TokenType::Plus, Literal::Symbol))),
-            ';' => Ok(Some((TokenType::Semicolon, Literal::Symbol))),
-            '*' => Ok(Some((TokenType::Star, Literal::Symbol))),
+            '(' => Ok(Some(TokenType::LeftParen)),
+            ')' => Ok(Some(TokenType::RightParen)),
+            '{' => Ok(Some(TokenType::LeftBrace)),
+            '}' => Ok(Some(TokenType::RightBrace)),
+            ',' => Ok(Some(TokenType::Comma)),
+            '.' => Ok(Some(TokenType::Dot)),
+            '-' => Ok(Some(TokenType::Minus)),
+            '+' => Ok(Some(TokenType::Plus)),
+            ';' => Ok(Some(TokenType::Semicolon)),
+            '*' => Ok(Some(TokenType::Star)),
             '!' => match self.chars.peek().unwrap_or(&' ') {
                 '=' => {
                     self.chars.next();
-                    Ok(Some((TokenType::BangEqual, Literal::Symbol)))
+                    Ok(Some(TokenType::BangEqual))
                 }
-                _ => Ok(Some((TokenType::Bang, Literal::Symbol))),
+                _ => Ok(Some(TokenType::Bang)),
             },
             '=' => match self.chars.peek().unwrap_or(&' ') {
                 '=' => {
                     self.chars.next();
-                    Ok(Some((TokenType::EqualEqual, Literal::Symbol)))
+                    Ok(Some(TokenType::EqualEqual))
                 }
-                _ => Ok(Some((TokenType::Equal, Literal::Symbol))),
+                _ => Ok(Some(TokenType::Equal)),
             },
             '<' => match self.chars.peek().unwrap_or(&' ') {
                 '=' => {
                     self.chars.next();
-                    Ok(Some((TokenType::LessEqual, Literal::Symbol)))
+                    Ok(Some(TokenType::LessEqual))
                 }
-                _ => Ok(Some((TokenType::Less, Literal::Symbol))),
+                _ => Ok(Some(TokenType::Less)),
             },
             '>' => match self.chars.peek().unwrap_or(&' ') {
                 '=' => {
                     self.chars.next();
-                    Ok(Some((TokenType::GreaterEqual, Literal::Symbol)))
+                    Ok(Some(TokenType::GreaterEqual))
                 }
-                _ => Ok(Some((TokenType::Greater, Literal::Symbol))),
+                _ => Ok(Some(TokenType::Greater)),
             },
             '/' => match self.chars.peek().unwrap_or(&' ') {
                 // comment found
@@ -190,7 +177,7 @@ impl Scanner<'_> {
                     }
                     Ok(None)
                 }
-                _ => Ok(Some((TokenType::Slash, Literal::Symbol))),
+                _ => Ok(Some(TokenType::Slash)),
             },
             ' ' => Ok(None),
             '\r' => Ok(None),
@@ -230,7 +217,7 @@ impl Scanner<'_> {
                     self.chars.next();
                 }
 
-                Ok(Some((TokenType::String, Literal::String(literal))))
+                Ok(Some(TokenType::String(literal)))
             }
             num @ '0'..='9' => {
                 let mut literal = String::from(num);
@@ -273,7 +260,7 @@ impl Scanner<'_> {
 
                 let literal = literal.parse::<f64>()?;
 
-                Ok(Some((TokenType::Number, Literal::Number(literal))))
+                Ok(Some(TokenType::Number(literal)))
             }
             c @ 'A'..='z' => {
                 let mut literal = String::from(c);
@@ -297,52 +284,52 @@ impl Scanner<'_> {
                 // Keyword matching
                 match literal.as_str() {
                     "and" => {
-                        return Ok(Some((TokenType::And, Literal::Keyword)));
+                        return Ok(Some(TokenType::And));
                     }
                     "class" => {
-                        return Ok(Some((TokenType::Class, Literal::Keyword)));
+                        return Ok(Some(TokenType::Class));
                     }
                     "else" => {
-                        return Ok(Some((TokenType::Else, Literal::Keyword)));
+                        return Ok(Some(TokenType::Else));
                     }
                     "false" => {
-                        return Ok(Some((TokenType::False, Literal::Keyword)));
+                        return Ok(Some(TokenType::False));
                     }
                     "for" => {
-                        return Ok(Some((TokenType::For, Literal::Keyword)));
+                        return Ok(Some(TokenType::For));
                     }
                     "fun" => {
-                        return Ok(Some((TokenType::Fun, Literal::Keyword)));
+                        return Ok(Some(TokenType::Fun));
                     }
                     "if" => {
-                        return Ok(Some((TokenType::If, Literal::Keyword)));
+                        return Ok(Some(TokenType::If));
                     }
                     "nil" => {
-                        return Ok(Some((TokenType::Nil, Literal::Keyword)));
+                        return Ok(Some(TokenType::Nil));
                     }
                     "or" => {
-                        return Ok(Some((TokenType::Or, Literal::Keyword)));
+                        return Ok(Some(TokenType::Or));
                     }
                     "print" => {
-                        return Ok(Some((TokenType::Print, Literal::Keyword)));
+                        return Ok(Some(TokenType::Print));
                     }
                     "return" => {
-                        return Ok(Some((TokenType::Return, Literal::Keyword)));
+                        return Ok(Some(TokenType::Return));
                     }
                     "super" => {
-                        return Ok(Some((TokenType::Super, Literal::Keyword)));
+                        return Ok(Some(TokenType::Super));
                     }
                     "this" => {
-                        return Ok(Some((TokenType::This, Literal::Keyword)));
+                        return Ok(Some(TokenType::This));
                     }
                     "true" => {
-                        return Ok(Some((TokenType::True, Literal::Keyword)));
+                        return Ok(Some(TokenType::True));
                     }
                     "let" => {
-                        return Ok(Some((TokenType::Let, Literal::Keyword)));
+                        return Ok(Some(TokenType::Let));
                     }
                     "while" => {
-                        return Ok(Some((TokenType::While, Literal::Keyword)));
+                        return Ok(Some(TokenType::While));
                     }
                     _ => {
                         let message = format!("Unexpected Keyword '{}'", literal);
