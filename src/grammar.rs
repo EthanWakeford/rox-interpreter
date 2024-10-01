@@ -6,27 +6,37 @@ use crate::scanner::{ScanError, Token, TokenType};
 pub enum Expr {
     Literal(Literal),
     // Grouping(Grouping),
-    // Unary(Unary),
+    Unary(Unary),
     Binary(Binary),
     Operator(Operator),
     // Equality(Equality),
+    Primary(Primary),
 }
 
 impl Expr {
-    pub fn new(tokens: &Vec<Token>) -> Result<Expr, Box<dyn Error>> {
+    pub fn new(tokens: &[Token]) -> Result<Expr, Box<dyn Error>> {
         // What is the best way to figure out what is the correct
         // Expression to look for
 
-        let token = match tokens.get(0) {
-            Some(l) => l,
-            None => {
-                return Err(Box::new(ScanError::new("Expected Token")));
-            }
-        };
+        // let token = match tokens.get(0) {
+        //     Some(l) => l,
+        //     None => {
+        //         return Err(Box::new(ScanError::new("Expected Token")));
+        //     }
+        // };
 
-        let literal = Literal::new(token)?;
+        // let literal = Literal::new(token)?;
 
-        Ok(Expr::Literal(literal))
+        println!("making an expr");
+
+        // let (primary, _) = Primary::new(tokens)?;
+        // Ok(Expr::Primary(primary))
+
+        // let (unary, _) = Unary::new(tokens)?;
+        // Ok(Expr::Unary(unary))
+
+        let (binary, _) = Binary::new(tokens)?;
+        Ok(Expr::Binary(binary))
     }
 }
 
@@ -41,12 +51,8 @@ pub enum Primary {
 }
 
 impl Primary {
-    pub fn new(tokens: &Vec<Token>) -> Result<Primary, Box<dyn Error>> {
-        if tokens.len() > 1 {
-            let expr = Expr::new(tokens)?;
-
-            return Ok(Primary::Expr(Box::new(expr)));
-        }
+    pub fn new(tokens: &[Token]) -> Result<(Primary, &[Token]), Box<dyn Error>> {
+        println!("making a primary");
 
         let token = match tokens.get(0) {
             Some(t) => t,
@@ -61,12 +67,19 @@ impl Primary {
             TokenType::True => Primary::True,
             TokenType::False => Primary::False,
             TokenType::Nil => Primary::Nil,
-            _ => {
-                return Err(Box::new(ScanError::new("Invalid Literal")));
+            TokenType::LeftParen => {
+                let expr = Expr::new(&tokens[1..])?;
+                let primary = Primary::Expr(Box::new(expr));
+
+                return Ok((primary, &tokens[..1]));
+            }
+            token => {
+                let message = format!("Unexpected Token: {:?}", token);
+                return Err(Box::new(ScanError::new(message)));
             }
         };
 
-        Ok(primary)
+        Ok((primary, &tokens[1..]))
     }
 }
 
@@ -77,45 +90,33 @@ enum UnaryOp {
 }
 
 #[derive(Debug)]
-enum UnaryOrPrimary {
-    Unary(Box<Unary>),
+pub enum Unary {
+    UnaryExpr(UnaryOp, Box<Unary>),
     Primary(Primary),
 }
 
-#[derive(Debug)]
-pub struct Unary(UnaryOp, UnaryOrPrimary);
-
 impl Unary {
-    pub fn new(tokens: &Vec<Token>) -> Result<Unary, Box<dyn Error>> {
+    pub fn new(tokens: &[Token]) -> Result<(Unary, &[Token]), Box<dyn Error>> {
         let un_op = match tokens.get(0) {
             Some(op) => match op.token_type {
                 TokenType::Minus => UnaryOp::Minus,
                 TokenType::Bang => UnaryOp::Bang,
                 _ => {
-                    let message = format!(
-                        "Unexpected Token {:?} Found, Exprected Unary Operator",
-                        op.token_type
-                    );
-                    return Err(Box::new(ScanError::new("")));
+                    let (primary, sliced_tokens) = Primary::new(tokens)?;
+
+                    return Ok((Unary::Primary(primary), sliced_tokens));
                 }
             },
             None => {
-                return Err(Box::new(ScanError::new(
-                    "No Token Found, Exprected Unary Operator",
-                )));
+                println!("found none");
+                return Err(Box::new(ScanError::new("Expected Token")));
             }
         };
 
-        if tokens.len() > 2 {
-            // Must be an Unary
-            let primary = Primary::new(tokens)?;
+        let (unary, sliced_tokens) = Unary::new(&tokens[1..])?;
+        let unary = Unary::UnaryExpr(un_op, Box::new(unary));
 
-            return Ok(Unary(un_op, UnaryOrPrimary::Primary(primary)));
-        }
-
-        // Hard coding this to always be a primary for now
-        let primary = Primary::new(tokens)?;
-        return Ok(Unary(un_op, UnaryOrPrimary::Primary(primary)));
+        Ok((unary, sliced_tokens))
     }
 }
 
@@ -126,13 +127,43 @@ enum FactorOp {
 }
 
 #[derive(Debug)]
-enum UnaryOrFactorOp {
-    FactorOp(FactorOp),
+pub enum Factor {
     Unary(Unary),
+    FactorExpr(FactorOp, Unary),
 }
 
-#[derive(Debug)]
-pub struct Factor(Unary, UnaryOrFactorOp);
+impl Factor {
+    pub fn new(tokens: &[Token]) -> Result<(Factor, &[Token]), Box<dyn Error>> {
+        let (unary, sliced_tokens) = Unary::new(tokens)?;
+
+        let mut binary: Binary;
+
+        loop {
+            let factor_op = match sliced_tokens.get(0) {
+                Some(op) => match op.token_type {
+                    TokenType::Slash => FactorOp::Slash,
+                    TokenType::Star => FactorOp::Star,
+                    _ => {
+                        //   Done with loop
+                        let factor = Factor::Unary(unary);
+
+                        return Ok((factor, sliced_tokens));
+                    }
+                },
+                None => {
+                    println!("found none");
+                    return Err(Box::new(ScanError::new(
+                        "No Token Found, Exprected Unary Operator",
+                    )));
+                }
+            };
+        }
+
+        let factor = Factor::Unary(unary);
+
+        Ok((factor, sliced_tokens))
+    }
+}
 
 #[derive(Debug)]
 enum TermOp {
@@ -173,13 +204,38 @@ enum EqualityOp {
 }
 
 #[derive(Debug)]
-enum ComparisonOrEqualityOp {
-    Comparison,
-    EqualityOp,
+pub struct Equality(Comparison, (EqualityOp, Comparison));
+
+impl Equality {
+    // pub fn new(tokens: &[Token]) -> Result<(Equality, &[Token]), Box<dyn Error>> {
+    //     let (left, sliced_tokens) = Comparison::New(tokens);
+
+    //     let eq_op = match tokens.get(0) {
+    //         Some(op) => match op.token_type {
+    //             TokenType::EqualEqual => EqualityOp::EqualEqual,
+    //             TokenType::BangEqual => EqualityOp::BangEqual,
+    //             _ => {
+    //                 println!("unexepcred");
+    //                 let message = format!(
+    //                     "Unexpected Token {:?} Found, Exprected Unary Operator",
+    //                     op.token_type
+    //                 );
+    //                 return Err(Box::new(ScanError::new(message)));
+    //             }
+    //         },
+    //         None => {
+    //             println!("found none");
+    //             return Err(Box::new(ScanError::new(
+    //                 "No Token Found, Exprected Unary Operator",
+    //             )));
+    //         }
+    //     };
+    // }
 }
 
-#[derive(Debug)]
-pub struct Equality(Comparison, ComparisonOrEqualityOp);
+impl Equality {
+    // pub fn new()
+}
 
 #[derive(Debug)]
 pub enum Literal {
@@ -212,44 +268,60 @@ impl Literal {
 pub struct Grouping(Box<Expr>);
 
 #[derive(Debug)]
-pub struct Binary(Box<Expr>, Operator, Box<Expr>);
+pub enum Binary {
+    BinaryExpr(Unary, Operator, Box<Expr>),
+    Unary(Unary),
+}
 
 impl Binary {
-    pub fn new(tokens: &Vec<Token>) -> Result<Binary, Box<dyn Error>> {
-        let [left, op, right] = (match tokens.get(0..=2) {
-            Some(slice) => slice,
+    pub fn new(tokens: &[Token]) -> Result<(Binary, &[Token]), Box<dyn Error>> {
+        println!("making a binary");
+        let (unary, sliced_tokens) = Unary::new(tokens)?;
+
+        println!("made binary");
+        dbg!(sliced_tokens);
+
+        if sliced_tokens.len() == 0 {
+            return Ok((Binary::Unary(unary), &sliced_tokens[..]));
+        }
+
+        let bin_op = match sliced_tokens.get(0) {
+            Some(op) => op,
             None => {
-                return Err(Box::new(ScanError::new("Invalid Literal")));
+                return Err(Box::new(ScanError::new(
+                    "Expected Binary Token But Found None",
+                )));
             }
-        }) else {
-            return Err(Box::new(ScanError::new("Invalid Literal")));
         };
 
-        let left_expr = match &left.token_type {
-            TokenType::String(s) => Box::new(Expr::Literal(Literal::STRING(s.to_string()))),
+        println!("here is my bin op {:?}", bin_op);
+
+        let bin_op = match bin_op.token_type {
+            TokenType::EqualEqual => Operator::BangEqual,
+            TokenType::BangEqual => Operator::BangEqual,
+            TokenType::Greater => Operator::Greater,
+            TokenType::GreaterEqual => Operator::GreaterEqual,
+            TokenType::Less => Operator::Less,
+            TokenType::LessEqual => Operator::LessEqual,
+            TokenType::Minus => Operator::Minus,
+            TokenType::Plus => Operator::Plus,
+            TokenType::Slash => Operator::Slash,
+            TokenType::Star => Operator::Star,
             _ => {
-                let message = format!(
-                    "Operation {:?} Not Allowed on Types {:?},{:?}",
-                    op.token_type, left.token_type, right.token_type
-                );
-                return Err(Box::new(ScanError::new(message)));
+                return Err(Box::new(ScanError::new(
+                    "Unexpected Token, Expected Binary Operator",
+                )));
             }
         };
+        // first item was consumed
+        let sliced_tokens = &sliced_tokens[1..];
 
-        let right_expr = match &right.token_type {
-            TokenType::String(s) => Box::new(Expr::Literal(Literal::STRING(s.to_string()))),
-            _ => {
-                let message = format!(
-                    "Operation {:?} Not Allowed on Types {:?},{:?}",
-                    op.token_type, left.token_type, right.token_type
-                );
-                return Err(Box::new(ScanError::new(message)));
-            }
-        };
+        let expr = Expr::new(sliced_tokens)?;
 
-        let op_expr = Operator::new(op)?;
-
-        Ok(Binary(left_expr, op_expr, right_expr))
+        Ok((
+            Binary::BinaryExpr(unary, bin_op, Box::new(expr)),
+            sliced_tokens,
+        ))
     }
 }
 

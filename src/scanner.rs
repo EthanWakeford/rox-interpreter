@@ -119,12 +119,13 @@ impl Scanner<'_> {
             });
         }
 
-        // End with EOF
-        self.tokens.push(Token {
-            token_type: TokenType::EOF,
-            // lexeme: "".to_string(),
-            line: self.line,
-        });
+        // Remove for now unless I need it later
+        // // End with EOF
+        // self.tokens.push(Token {
+        //     token_type: TokenType::EOF,
+        //     // lexeme: "".to_string(),
+        //     line: self.line,
+        // });
 
         Ok(&self.tokens)
     }

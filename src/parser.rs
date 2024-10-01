@@ -14,7 +14,8 @@ impl Parser<'_> {
     }
 
     pub fn parse(&self) {
-        let expr = Expr::new(&self.tokens);
+        let tok_slice = &self.tokens.as_slice();
+        let expr = Expr::new(&tok_slice);
 
         match expr {
             Err(e) => {
