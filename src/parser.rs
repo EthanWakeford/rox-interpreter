@@ -2,28 +2,35 @@ use crate::{grammar::*, scanner::Token};
 
 pub struct Parser<'a> {
     tokens: &'a Vec<Token>,
-    _current: i64,
+    line: i64,
 }
 
 impl Parser<'_> {
     pub fn new(tokens: &Vec<Token>) -> Parser {
         Parser {
             tokens: &tokens,
-            _current: 0,
+            line: 1,
         }
     }
 
-    pub fn parse(&self) {
-        let tok_slice = &self.tokens.as_slice();
-        let expr = Expr::new(&tok_slice);
+    pub fn parse(&mut self) {
+        let mut tok_slice = self.tokens.as_slice();
 
-        match expr {
-            Err(e) => {
-                eprintln!("{}", e);
+        while !tok_slice.is_empty() {
+            let expr = Expr::new(tok_slice);
+
+            match expr {
+                Err(e) => {
+                    eprintln!("[Line: {}] {}", self.line, e);
+                }
+                Ok((expr, rest_tokens)) => {
+                    println!("[Line: {}] {:?}", self.line, expr);
+
+                    // Update tok_slice to the remaining tokens
+                    tok_slice = rest_tokens;
+                }
             }
-            Ok(expr) => {
-                println!("{:?}", expr);
-            }
+            self.line += 1;
         }
     }
 }

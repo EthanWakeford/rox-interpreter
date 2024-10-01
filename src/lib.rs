@@ -22,7 +22,7 @@ pub fn run_file(filename: &String) -> Result<(), Box<dyn Error>> {
 
     let tokens = scanner.scan_tokens()?;
 
-    let parser = Parser::new(tokens);
+    let mut parser = Parser::new(tokens);
 
     parser.parse();
 
@@ -43,7 +43,7 @@ pub fn run_proompt() -> Result<(), Box<dyn Error>> {
 
         let tokens = scanner.scan_tokens()?;
 
-        let parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens);
 
         parser.parse();
 

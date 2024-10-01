@@ -14,7 +14,7 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn new(tokens: &[Token]) -> Result<Expr, Box<dyn Error>> {
+    pub fn new(tokens: &[Token]) -> Result<(Expr, &[Token]), Box<dyn Error>> {
         // What is the best way to figure out what is the correct
         // Expression to look for
 
@@ -24,13 +24,15 @@ impl Expr {
         // let (unary, _) = Unary::new(tokens)?;
         // Ok(Expr::Unary(unary))
 
-        let (binary, _) = Binary::new(tokens)?;
+        let (binary, rest_tokens) = Binary::new(tokens)?;
 
-        Ok(match binary {
+        let expr = match binary {
             Binary::Primary(p) => Expr::Primary(p),
             Binary::Unary(u) => Expr::Unary(u),
             Binary::BinaryExpr(_, _, _) => Expr::Binary(binary),
-        })
+        };
+
+        Ok((expr, rest_tokens))
     }
 }
 
@@ -41,7 +43,7 @@ pub enum Primary {
     True,
     False,
     Nil,
-    Expr(Box<Expr>),
+    Grouping(Grouping),
 }
 
 impl Primary {
@@ -60,10 +62,9 @@ impl Primary {
             TokenType::False => Primary::False,
             TokenType::Nil => Primary::Nil,
             TokenType::LeftParen => {
-                let expr = Expr::new(&tokens[1..])?;
-                let primary = Primary::Expr(Box::new(expr));
+                let (grouping, rest_tokens) = Grouping::new(&tokens[1..])?;
 
-                return Ok((primary, &tokens[..1]));
+                return Ok((Primary::Grouping(grouping), rest_tokens));
             }
             token => {
                 let message = format!("Unexpected Token: {:?}", token);
@@ -140,6 +141,37 @@ impl Literal {
 // // Not sure about this one but we'll leave for nows
 #[derive(Debug)]
 pub struct Grouping(Box<Expr>);
+
+impl Grouping {
+    pub fn new(tokens: &[Token]) -> Result<(Grouping, &[Token]), Box<dyn Error>> {
+        let mut index = 1;
+        while let Some(token) = tokens.get(index) {
+            match &token.token_type {
+                TokenType::RightParen => {
+                    let (expr, rest_tokens) = Expr::new(&tokens[..index])?;
+                    // Rest_tokens should not be allowed here???
+                    if rest_tokens.len() > 0 {
+                        return Err(Box::new(ScanError::new(
+                            "Unexpected Tokens In Group Expression",
+                        )));
+                    }
+
+                    // let primary = Primary::Grouping(Grouping(Box::new(expr)));
+                    let grouping = Grouping(Box::new(expr));
+
+                    // Rest of tokens start immediately after right paren
+                    return Ok((grouping, &tokens[(index + 1)..]));
+                }
+                _ => {
+                    index += 1;
+                    continue;
+                }
+            }
+        }
+
+        Err(Box::new(ScanError::new("Expected Closing Parenthesis")))
+    }
+}
 
 #[derive(Debug)]
 pub enum Binary {
