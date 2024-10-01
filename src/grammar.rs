@@ -25,7 +25,12 @@ impl Expr {
         // Ok(Expr::Unary(unary))
 
         let (binary, _) = Binary::new(tokens)?;
-        Ok(Expr::Binary(binary))
+
+        Ok(match binary {
+            Binary::Primary(p) => Expr::Primary(p),
+            Binary::Unary(u) => Expr::Unary(u),
+            Binary::BinaryExpr(_, _, _) => Expr::Binary(binary),
+        })
     }
 }
 
@@ -71,7 +76,7 @@ impl Primary {
 }
 
 #[derive(Debug)]
-enum UnaryOp {
+pub enum UnaryOp {
     Minus,
     Bang,
 }
