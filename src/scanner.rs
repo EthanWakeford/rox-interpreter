@@ -47,8 +47,7 @@ pub enum TokenType {
     True,
     Let,
     While,
-
-    EOF,
+    // EOF,
 }
 
 #[derive(Debug)]

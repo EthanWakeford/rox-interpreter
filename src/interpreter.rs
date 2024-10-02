@@ -1,5 +1,5 @@
-use crate::grammar::{Evaluate, Expr};
+// use crate::grammar::{Evaluate, Expr};
 
-pub fn interpret(expr: Expr) {
-    let val = expr.eval().unwrap();
-}
+// pub fn interpret(expr: Expr) {
+//     let val = expr.eval().unwrap();
+// }

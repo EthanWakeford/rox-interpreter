@@ -8,8 +8,7 @@ mod grammar;
 mod interpreter;
 mod parser;
 mod scanner;
-use grammar::{Evaluate, Value};
-use interpreter::interpret;
+use grammar::Evaluate;
 use parser::Parser;
 use scanner::Scanner;
 

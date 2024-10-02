@@ -1,4 +1,4 @@
-use std::{any::Any, error::Error};
+use std::error::Error;
 
 use crate::scanner::{ScanError, Token, TokenType};
 
@@ -453,25 +453,25 @@ pub enum Operator {
 }
 
 impl Operator {
-    pub fn new(token: &Token) -> Result<Operator, Box<dyn Error>> {
-        let operator = match &token.token_type {
-            TokenType::Minus => Operator::Minus,
-            TokenType::Plus => Operator::Plus,
-            TokenType::Slash => Operator::Slash,
-            TokenType::Star => Operator::Star,
-            TokenType::BangEqual => Operator::BangEqual,
-            TokenType::EqualEqual => Operator::EqualEqual,
-            TokenType::Greater => Operator::Greater,
-            TokenType::GreaterEqual => Operator::GreaterEqual,
-            TokenType::Less => Operator::Less,
-            TokenType::LessEqual => Operator::LessEqual,
-            _ => {
-                return Err(Box::new(ScanError::new("Invalid Operator")));
-            }
-        };
+    // pub fn new(token: &Token) -> Result<Operator, Box<dyn Error>> {
+    //     let operator = match &token.token_type {
+    //         TokenType::Minus => Operator::Minus,
+    //         TokenType::Plus => Operator::Plus,
+    //         TokenType::Slash => Operator::Slash,
+    //         TokenType::Star => Operator::Star,
+    //         TokenType::BangEqual => Operator::BangEqual,
+    //         TokenType::EqualEqual => Operator::EqualEqual,
+    //         TokenType::Greater => Operator::Greater,
+    //         TokenType::GreaterEqual => Operator::GreaterEqual,
+    //         TokenType::Less => Operator::Less,
+    //         TokenType::LessEqual => Operator::LessEqual,
+    //         _ => {
+    //             return Err(Box::new(ScanError::new("Invalid Operator")));
+    //         }
+    //     };
 
-        Ok(operator)
-    }
+    //     Ok(operator)
+    // }
 }
 
 #[derive(Debug)]
