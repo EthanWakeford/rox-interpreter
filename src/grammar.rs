@@ -135,7 +135,7 @@ impl Evaluate for PrintStatement {
                 println!("{num}");
             }
             Value::Nil => {
-                println!("Nil");
+                println!("nil");
             }
         };
 

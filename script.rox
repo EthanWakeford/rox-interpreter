@@ -1,3 +1,7 @@
 true == nil == 23
 25 / 0
 print "hello world"
+print true
+// printtrue
+print nil
+print 2 + 1
