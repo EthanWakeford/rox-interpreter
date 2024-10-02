@@ -13,7 +13,8 @@ impl Parser<'_> {
         }
     }
 
-    pub fn parse(&mut self) {
+    pub fn parse(&mut self) -> Vec<Expr> {
+        let mut expressions: Vec<Expr> = Vec::new();
         let mut tok_slice = self.tokens.as_slice();
 
         while !tok_slice.is_empty() {
@@ -24,7 +25,7 @@ impl Parser<'_> {
                     eprintln!("[Line: {}] {}", self.line, e);
                 }
                 Ok((expr, rest_tokens)) => {
-                    println!("[Line: {}] {:?}", self.line, expr);
+                    expressions.push(expr);
 
                     // Update tok_slice to the remaining tokens
                     tok_slice = rest_tokens;
@@ -32,5 +33,7 @@ impl Parser<'_> {
             }
             self.line += 1;
         }
+
+        expressions
     }
 }

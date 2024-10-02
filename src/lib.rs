@@ -5,8 +5,11 @@ use std::{
 };
 
 mod grammar;
+mod interpreter;
 mod parser;
 mod scanner;
+use grammar::{Evaluate, Value};
+use interpreter::interpret;
 use parser::Parser;
 use scanner::Scanner;
 
@@ -24,9 +27,13 @@ pub fn run_file(filename: &String) -> Result<(), Box<dyn Error>> {
 
     let mut parser = Parser::new(tokens);
 
-    parser.parse();
+    let exprs = parser.parse();
 
-    // println!("{:?}", tokens);
+    for expr in exprs {
+        let value = expr.eval()?;
+        dbg!(value);
+    }
+
     Ok(())
 }
 
@@ -45,8 +52,11 @@ pub fn run_proompt() -> Result<(), Box<dyn Error>> {
 
         let mut parser = Parser::new(tokens);
 
-        parser.parse();
+        let exprs = parser.parse();
 
-        // println!("{:?}", tokens);
+        for expr in exprs {
+            let value = expr.eval()?;
+            dbg!(value);
+        }
     }
 }
