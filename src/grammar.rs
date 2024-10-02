@@ -83,6 +83,7 @@ impl Grouping {
             }
         }
 
+        // FIXME: doesn't actually end parsing
         Err(Box::new(ScanError::new("Expected Closing Parenthesis")))
     }
 }
@@ -205,6 +206,7 @@ impl Evaluate for Binary {
                 match op {
                     // No equality type coercion
                     // Equality between different types allowed but will always be false
+                    // Nil is NOT falsy for binary "equal"/"not equal"
                     Operator::EqualEqual => match (left, right) {
                         (Value::Number(leftnum), Value::Number(rightnum)) => {
                             Value::Bool(leftnum == rightnum)
@@ -368,6 +370,8 @@ impl Evaluate for Unary {
                 let prim_val = primary.eval()?;
                 match (op, prim_val) {
                     (UnaryOp::Bang, Value::Bool(b)) => Value::Bool(!b),
+                    // Nil evaluated as falsy only for unary "NOT"
+                    (UnaryOp::Bang, Value::Nil) => Value::Bool(true),
                     (UnaryOp::Minus, Value::Number(num)) => Value::Number(num * -1.0),
                     _ => {
                         let message = format!("Invalid Operation {:?} on type {:?}", op, primary);
