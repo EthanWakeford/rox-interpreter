@@ -26,7 +26,7 @@ pub enum TokenType {
     LessEqual,
 
     // Literals.
-    // Identifier,
+    Identifier(String),
     String(String),
     Number(f64),
 
@@ -332,8 +332,7 @@ impl Scanner<'_> {
                         return Ok(Some(TokenType::While));
                     }
                     _ => {
-                        let message = format!("Unexpected Keyword '{}'", literal);
-                        return Err(Box::new(ScanError::new(message)));
+                        return Ok(Some(TokenType::Identifier(literal)));
                     }
                 }
             }

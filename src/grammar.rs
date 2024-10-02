@@ -2,6 +2,10 @@ use std::error::Error;
 
 use crate::scanner::{ScanError, Token, TokenType};
 
+pub struct Environment{
+    
+}
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Number(f64),
@@ -15,18 +19,20 @@ pub trait Evaluate {
 }
 
 #[derive(Debug)]
-pub struct Program(Vec<Statement>);
+pub struct Program(Vec<Declaration>);
 
 impl Program {
     pub fn new(mut tokens: &[Token]) -> Result<Program, Box<dyn Error>> {
         let mut program = Vec::new();
 
         while !tokens.is_empty() {
-            let stmt = Statement::new(tokens);
+            let decl = Declaration::new(tokens);
 
-            match stmt {
+            match decl {
                 Err(e) => {
+                    // How do I figure out where to run again??
                     eprintln!("{e}");
+                    panic!("panic")
                 }
                 Ok((expr, rest_tokens)) => {
                     program.push(expr);
@@ -49,6 +55,85 @@ impl Program {
             // dbg!(value);
         }
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+enum Declaration {
+    VarDecl(VarDecl),
+    Statement(Statement),
+}
+
+impl Declaration {
+    pub fn new(tokens: &[Token]) -> Result<(Declaration, &[Token]), Box<dyn Error>> {
+        if let Some(token) = tokens.get(0) {
+            match token.token_type {
+                TokenType::Let => {
+                    let (decl, rest_tokens) = VarDecl::new(&tokens[1..])?;
+                    let decl = Declaration::VarDecl(decl);
+
+                    return Ok((decl, rest_tokens));
+                }
+                _ => (),
+            }
+        }
+
+        let (stmt, rest_tokens) = Statement::new(tokens)?;
+
+        let decl = Declaration::Statement(stmt);
+
+        Ok((decl, rest_tokens))
+    }
+}
+
+impl Evaluate for Declaration {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        let value = match self {
+            Declaration::Statement(stmt) => stmt.eval()?,
+            Declaration::VarDecl(vd) => vd.eval()?,
+        };
+
+        Ok(value)
+    }
+}
+
+#[derive(Debug)]
+struct VarDecl(Identifier, Expr);
+
+impl VarDecl {
+    pub fn new(tokens: &[Token]) -> Result<(VarDecl, &[Token]), Box<dyn Error>> {
+        let identifier = match tokens.get(..=1) {
+            Some([iden_token, eq_token]) => match (&iden_token.token_type, &eq_token.token_type) {
+                (TokenType::Identifier(identifier), TokenType::Equal) => identifier,
+                _ => {
+                    return Err(Box::new(ScanError::new(
+                        "Expected Identifier And Assignment Operator After Let Declaration",
+                    )));
+                }
+            },
+            None => {
+                return Err(Box::new(ScanError::new("Expected Identifier After Let")));
+            }
+            _ => {
+                return Err(Box::new(ScanError::new(
+                    "Expected Identifier And Assignment Operator After Let Declaration",
+                )));
+            }
+        };
+
+        let identifier = Identifier(identifier.to_string());
+        let rest_tokens = &tokens[2..];
+        let (expr, rest_tokens) = Expr::new(rest_tokens)?;
+
+        Ok((VarDecl(identifier, expr), rest_tokens))
+    }
+}
+
+impl Evaluate for VarDecl {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        let value = self.1.eval()?;
+
+        Ok(value)
     }
 }
 
@@ -517,6 +602,7 @@ impl Evaluate for Unary {
 pub enum Primary {
     NUMBER(f64),
     STRING(String),
+    Identifier(Identifier),
     True,
     False,
     Nil,
@@ -561,6 +647,7 @@ impl Evaluate for Primary {
             Primary::True => Value::Bool(true),
             Primary::False => Value::Bool(false),
             Primary::Nil => Value::Nil,
+            Primary::Identifier(str) => Value::String(str.0.to_string()),
             Primary::Grouping(g) => g.eval()?,
         };
         Ok(val)
@@ -581,50 +668,5 @@ pub enum Operator {
     LessEqual,
 }
 
-impl Operator {
-    // pub fn new(token: &Token) -> Result<Operator, Box<dyn Error>> {
-    //     let operator = match &token.token_type {
-    //         TokenType::Minus => Operator::Minus,
-    //         TokenType::Plus => Operator::Plus,
-    //         TokenType::Slash => Operator::Slash,
-    //         TokenType::Star => Operator::Star,
-    //         TokenType::BangEqual => Operator::BangEqual,
-    //         TokenType::EqualEqual => Operator::EqualEqual,
-    //         TokenType::Greater => Operator::Greater,
-    //         TokenType::GreaterEqual => Operator::GreaterEqual,
-    //         TokenType::Less => Operator::Less,
-    //         TokenType::LessEqual => Operator::LessEqual,
-    //         _ => {
-    //             return Err(Box::new(ScanError::new("Invalid Operator")));
-    //         }
-    //     };
-
-    //     Ok(operator)
-    // }
-}
-
-// #[derive(Debug)]
-// pub enum Literal {
-//     NUMBER(f64),
-//     STRING(String),
-//     True,
-//     False,
-//     Nil,
-// }
-
-// impl Literal {
-//     pub fn new(token: &Token) -> Result<Literal, Box<dyn Error>> {
-//         let literal = match &token.token_type {
-//             TokenType::Number(num) => Literal::NUMBER(*num),
-//             TokenType::String(s) => Literal::STRING(s.to_string()),
-//             TokenType::True => Literal::True,
-//             TokenType::False => Literal::False,
-//             TokenType::Nil => Literal::Nil,
-//             _ => {
-//                 return Err(Box::new(ScanError::new("Invalid Literal")));
-//             }
-//         };
-
-//         Ok(literal)
-//     }
-// }
+#[derive(Debug)]
+pub struct Identifier(String);

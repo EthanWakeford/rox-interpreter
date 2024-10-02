@@ -22,6 +22,7 @@ impl Parser<'_> {
 
             match expr {
                 Err(e) => {
+                    panic!("e");
                     eprintln!("[Line: {}] {}", self.line, e);
                 }
                 Ok((expr, rest_tokens)) => {

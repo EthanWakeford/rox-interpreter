@@ -1,6 +1,6 @@
 use std::env;
 
-use rox::{run_file, run_proompt};
+use rox::{run_file, run_prompt};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -15,7 +15,7 @@ fn main() {
             eprintln!("Error: {}", e);
         }
     } else {
-        if let Err(e) = run_proompt() {
+        if let Err(e) = run_prompt() {
             eprintln!("Error: {}", e);
         };
     }

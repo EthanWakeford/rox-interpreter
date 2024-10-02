@@ -31,8 +31,8 @@ pub fn run_file(filename: &String) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn run_proompt() -> Result<(), Box<dyn Error>> {
-    println!("im a proomptin");
+pub fn run_prompt() -> Result<(), Box<dyn Error>> {
+    println!("im a promptin");
     loop {
         print!("  ===]> ");
 
