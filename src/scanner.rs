@@ -26,7 +26,7 @@ pub enum TokenType {
     LessEqual,
 
     // Literals.
-    Identifier,
+    // Identifier,
     String(String),
     Number(f64),
 
@@ -54,7 +54,7 @@ pub enum TokenType {
 pub struct Token {
     pub token_type: TokenType,
     // lexeme: String,
-    pub line: u64,
+    // pub line: u64,
 }
 
 #[derive(Debug)]
@@ -114,7 +114,7 @@ impl Scanner<'_> {
             self.tokens.push(Token {
                 token_type,
                 // lexeme: literal,
-                line: self.line,
+                // line: self.line,
             });
         }
 

@@ -8,7 +8,7 @@ mod grammar;
 mod interpreter;
 mod parser;
 mod scanner;
-use grammar::Evaluate;
+use grammar::{Evaluate, Program};
 use parser::Parser;
 use scanner::Scanner;
 
@@ -24,14 +24,9 @@ pub fn run_file(filename: &String) -> Result<(), Box<dyn Error>> {
 
     let tokens = scanner.scan_tokens()?;
 
-    let mut parser = Parser::new(tokens);
+    let program = Program::new(tokens)?;
 
-    let exprs = parser.parse();
-
-    for expr in exprs {
-        let value = expr.eval()?;
-        dbg!(value);
-    }
+    program.run()?;
 
     Ok(())
 }

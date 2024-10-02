@@ -15,6 +15,135 @@ pub trait Evaluate {
 }
 
 #[derive(Debug)]
+pub struct Program(Vec<Statement>);
+
+impl Program {
+    pub fn new(mut tokens: &[Token]) -> Result<Program, Box<dyn Error>> {
+        let mut program = Vec::new();
+
+        while !tokens.is_empty() {
+            let stmt = Statement::new(tokens);
+
+            match stmt {
+                Err(e) => {
+                    eprintln!("{e}");
+                }
+                Ok((expr, rest_tokens)) => {
+                    program.push(expr);
+
+                    // Update tok_slice to the remaining tokens
+                    tokens = rest_tokens;
+                }
+            }
+        }
+
+        let program = Program(program);
+
+        Ok(program)
+    }
+
+    pub fn run(&self) -> Result<(), Box<dyn Error>> {
+        for stmt in &self.0 {
+            let _value = stmt.eval()?;
+
+            // dbg!(value);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub enum Statement {
+    ExprStatement(ExprStatement),
+    PrintStatement(PrintStatement),
+}
+
+impl Statement {
+    pub fn new(tokens: &[Token]) -> Result<(Statement, &[Token]), Box<dyn Error>> {
+        if let Some(p) = tokens.get(0) {
+            match p.token_type {
+                TokenType::Print => {
+                    let (stmt, rest_tokens) = PrintStatement::new(&tokens[1..])?;
+                    let stmt = Statement::PrintStatement(stmt);
+                    return Ok((stmt, rest_tokens));
+                }
+                _ => (),
+            };
+        }
+
+        let (stmt, rest_tokens) = ExprStatement::new(tokens)?;
+        let stmt = Statement::ExprStatement(stmt);
+        return Ok((stmt, rest_tokens));
+    }
+}
+
+impl Evaluate for Statement {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        let value = match self {
+            Self::ExprStatement(e) => e.eval()?,
+            Self::PrintStatement(p) => p.eval()?,
+        };
+
+        Ok(value)
+    }
+}
+
+#[derive(Debug)]
+pub struct ExprStatement(Expr);
+
+impl ExprStatement {
+    pub fn new(tokens: &[Token]) -> Result<(ExprStatement, &[Token]), Box<dyn Error>> {
+        let (expr, rest_tokens) = Expr::new(tokens)?;
+
+        Ok((ExprStatement(expr), rest_tokens))
+    }
+}
+
+impl Evaluate for ExprStatement {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        let value = self.0.eval()?;
+
+        Ok(value)
+    }
+}
+
+#[derive(Debug)]
+pub struct PrintStatement(Expr);
+
+impl PrintStatement {
+    pub fn new(tokens: &[Token]) -> Result<(PrintStatement, &[Token]), Box<dyn Error>> {
+        let (expr, rest_tokens) = Expr::new(tokens)?;
+
+        Ok((PrintStatement(expr), rest_tokens))
+    }
+}
+
+impl Evaluate for PrintStatement {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        let value = self.0.eval()?;
+
+        // Do I print here????
+
+        match value.clone() {
+            Value::String(str) => {
+                println!("{str}");
+            }
+            Value::Bool(b) => {
+                println!("{b}");
+            }
+            Value::Number(num) => {
+                println!("{num}");
+            }
+            Value::Nil => {
+                println!("Nil");
+            }
+        };
+
+        Ok(value)
+    }
+}
+
+#[derive(Debug)]
 pub enum Expr {
     // Literal(Literal),
     // Grouping(Grouping),
@@ -474,28 +603,28 @@ impl Operator {
     // }
 }
 
-#[derive(Debug)]
-pub enum Literal {
-    NUMBER(f64),
-    STRING(String),
-    True,
-    False,
-    Nil,
-}
+// #[derive(Debug)]
+// pub enum Literal {
+//     NUMBER(f64),
+//     STRING(String),
+//     True,
+//     False,
+//     Nil,
+// }
 
-impl Literal {
-    pub fn new(token: &Token) -> Result<Literal, Box<dyn Error>> {
-        let literal = match &token.token_type {
-            TokenType::Number(num) => Literal::NUMBER(*num),
-            TokenType::String(s) => Literal::STRING(s.to_string()),
-            TokenType::True => Literal::True,
-            TokenType::False => Literal::False,
-            TokenType::Nil => Literal::Nil,
-            _ => {
-                return Err(Box::new(ScanError::new("Invalid Literal")));
-            }
-        };
+// impl Literal {
+//     pub fn new(token: &Token) -> Result<Literal, Box<dyn Error>> {
+//         let literal = match &token.token_type {
+//             TokenType::Number(num) => Literal::NUMBER(*num),
+//             TokenType::String(s) => Literal::STRING(s.to_string()),
+//             TokenType::True => Literal::True,
+//             TokenType::False => Literal::False,
+//             TokenType::Nil => Literal::Nil,
+//             _ => {
+//                 return Err(Box::new(ScanError::new("Invalid Literal")));
+//             }
+//         };
 
-        Ok(literal)
-    }
-}
+//         Ok(literal)
+//     }
+// }
