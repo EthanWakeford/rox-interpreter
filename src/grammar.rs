@@ -1,10 +1,6 @@
-use std::error::Error;
+use std::{collections::HashMap, error::Error};
 
 use crate::scanner::{ScanError, Token, TokenType};
-
-pub struct Environment{
-    
-}
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -14,9 +10,17 @@ pub enum Value {
     Nil,
 }
 
+#[derive(Debug, Clone)]
+pub enum IdentifierState {
+    Value(Value),
+    Empty,
+}
+
 pub trait Evaluate {
     fn eval(&self) -> Result<Value, Box<dyn Error>>;
 }
+
+pub struct Environment(Vec<Box<Environment>>, HashMap<String, IdentifierState>);
 
 #[derive(Debug)]
 pub struct Program(Vec<Declaration>);
@@ -30,7 +34,7 @@ impl Program {
 
             match decl {
                 Err(e) => {
-                    // How do I figure out where to run again??
+                    // TODO: How do I figure out where to run again??
                     eprintln!("{e}");
                     panic!("panic")
                 }
@@ -50,9 +54,9 @@ impl Program {
 
     pub fn run(&self) -> Result<(), Box<dyn Error>> {
         for stmt in &self.0 {
-            let _value = stmt.eval()?;
+            let value = stmt.eval()?;
 
-            // dbg!(value);
+            dbg!(value);
         }
         Ok(())
     }
@@ -68,6 +72,7 @@ impl Declaration {
     pub fn new(tokens: &[Token]) -> Result<(Declaration, &[Token]), Box<dyn Error>> {
         if let Some(token) = tokens.get(0) {
             match token.token_type {
+                // Look for "let" keyword
                 TokenType::Let => {
                     let (decl, rest_tokens) = VarDecl::new(&tokens[1..])?;
                     let decl = Declaration::VarDecl(decl);

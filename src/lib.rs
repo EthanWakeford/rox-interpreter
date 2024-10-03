@@ -7,6 +7,7 @@ use std::{
 mod grammar;
 mod interpreter;
 mod parser;
+mod resolver;
 mod scanner;
 use grammar::{Evaluate, Program};
 use parser::Parser;
@@ -44,13 +45,8 @@ pub fn run_prompt() -> Result<(), Box<dyn Error>> {
 
         let tokens = scanner.scan_tokens()?;
 
-        let mut parser = Parser::new(tokens);
+        let program = Program::new(tokens)?;
 
-        let exprs = parser.parse();
-
-        for expr in exprs {
-            let value = expr.eval()?;
-            dbg!(value);
-        }
+        program.run()?;
     }
 }
