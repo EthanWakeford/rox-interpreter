@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, thread::Scope};
 
 use crate::{
     resolver::Environment,
@@ -100,7 +100,7 @@ impl Evaluate for Declaration<'_> {
 }
 
 #[derive(Debug)]
-struct VarDecl<'a>(pub Identifier<'a>, pub Expr<'a>);
+pub struct VarDecl<'a>(pub Identifier<'a>, pub Expr<'a>);
 
 impl VarDecl<'_> {
     pub fn new(tokens: &[Token]) -> Result<(VarDecl, &[Token]), Box<dyn Error>> {
@@ -133,9 +133,22 @@ impl VarDecl<'_> {
 
 impl Evaluate for VarDecl<'_> {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
-        let value = self.1.eval()?;
+        let (name, scope) = match &self.0 {
+            Identifier::Unresolved(_name) => {
+                return Err(Box::new(ScanError::new(
+                    "Somehow identifier is not resolved here during var decl",
+                )));
+            }
+            Identifier::Resolved { name, scope } => (name, scope),
+        };
 
-        Ok(value)
+        let val = self.1.eval()?;
+        scope
+            .values
+            .borrow_mut()
+            .insert(name.to_string(), Some(val));
+
+        Ok(Value::Nil)
     }
 }
 
@@ -631,6 +644,9 @@ impl Primary<'_> {
 
                 return Ok((Primary::Grouping(grouping), rest_tokens));
             }
+            TokenType::Identifier(str) => {
+                Primary::Identifier(Identifier::Unresolved(str.to_string()))
+            }
             token => {
                 let message = format!("Unexpected Token: {:?}", token);
                 return Err(Box::new(ScanError::new(message)));
@@ -649,18 +665,7 @@ impl Evaluate for Primary<'_> {
             Primary::True => Value::Bool(true),
             Primary::False => Value::Bool(false),
             Primary::Nil => Value::Nil,
-            Primary::Identifier(str) => match str {
-                // TODO: Figure this out
-                Identifier::Unresolved(str) => {
-                    let message = format!("I Don't Think This Should be resolved yet?, {}", str);
-                    return Err(Box::new(ScanError::new(message)));
-                }
-                Identifier::Resolved { name, scope } => {
-                    // TODO: Fix this hard coding
-                    let value = scope.values.get(name);
-                    value.unwrap().clone().unwrap()
-                }
-            },
+            Primary::Identifier(i) => i.eval()?,
             Primary::Grouping(g) => g.eval()?,
         };
         Ok(val)
@@ -688,4 +693,37 @@ pub enum Identifier<'a> {
         name: String,
         scope: &'a Environment,
     },
+}
+
+impl Evaluate for Identifier<'_> {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        let value = match self {
+            Identifier::Unresolved(str) => {
+                let message = format!("This Identifier was Never Resolved {}", str);
+                return Err(Box::new(ScanError::new(message)));
+            }
+            Identifier::Resolved { name, scope } => {
+                let values = scope.values.borrow_mut();
+                let value = values.get(name).cloned();
+
+                // if empty here not in scope
+                // TODO: look in parent scope
+                match value {
+                    None => {
+                        let message = format!("This Identifier Is not present, Should have been caught during semantic analysis {}", name);
+                        return Err(Box::new(ScanError::new(message)));
+                    }
+                    Some(val) => match val {
+                        None => {
+                            let message = format!("This Identifier was never initialized, also should have been caught before this {}", name);
+                            return Err(Box::new(ScanError::new(message)));
+                        }
+                        Some(val) => val,
+                    },
+                }
+            }
+        };
+
+        Ok(value.clone())
+    }
 }

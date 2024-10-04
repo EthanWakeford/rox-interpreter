@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error};
+use std::{cell::RefCell, collections::HashMap, error::Error};
 
 use crate::{grammar::*, scanner::ScanError};
 
@@ -25,7 +25,7 @@ pub fn analyze(ast: AST) -> Result<(), Box<dyn Error>> {
                     // Everything starts unresolved
                     Identifier::Unresolved(name) => {
                         // We dont' worry about the expression right now, only adding key to map
-                        global.values.insert(name, None);
+                        global.values.get_mut().insert(name, None);
                     }
                 }
             }
@@ -57,7 +57,8 @@ pub fn resolve_primary(primary: Primary, env: &Environment) -> Result<(), Box<dy
         Primary::Identifier(iden) => {
             match iden {
                 Identifier::Unresolved(name) => {
-                    let value = env.values.get(&name);
+                    let values = env.values.borrow_mut();
+                    let value = values.get(&name);
                     match value {
                         // If exists, resolve
                         Some(val) => {
@@ -115,7 +116,7 @@ pub fn resolve_binary(binary: Binary, env: &Environment) -> Result<(), Box<dyn E
 #[derive(Debug, Clone)]
 pub struct Environment {
     pub nested: Vec<Box<Environment>>,
-    pub values: HashMap<String, Option<Value>>,
+    pub values: RefCell<HashMap<String, Option<Value>>>,
 }
 
 impl Environment {
@@ -125,20 +126,20 @@ impl Environment {
 
         Environment {
             nested,
-            values: variables,
+            values: RefCell::new(variables),
         }
     }
 
     pub fn decl(&mut self, name: String) {
-        self.values.insert(name, None);
+        self.values.borrow_mut().insert(name, None);
     }
 
     pub fn set(&mut self, name: String, value: Value) {
-        self.values.insert(name, Some(value));
+        self.values.borrow_mut().insert(name, Some(value));
     }
 
     pub fn get(&self, name: &str) -> Option<Value> {
-        match self.values.get(name) {
+        match self.values.borrow_mut().get(name) {
             None => None,
             Some(val) => val.clone(),
         }
