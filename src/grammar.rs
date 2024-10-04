@@ -1,6 +1,9 @@
-use std::{collections::HashMap, error::Error};
+use std::error::Error;
 
-use crate::scanner::{ScanError, Token, TokenType};
+use crate::{
+    resolver::Environment,
+    scanner::{ScanError, Token, TokenType},
+};
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -10,24 +13,18 @@ pub enum Value {
     Nil,
 }
 
-#[derive(Debug, Clone)]
-pub enum IdentifierState {
-    Value(Value),
-    Empty,
-}
-
 pub trait Evaluate {
     fn eval(&self) -> Result<Value, Box<dyn Error>>;
 }
 
-pub struct Environment(Vec<Box<Environment>>, HashMap<String, IdentifierState>);
-
 #[derive(Debug)]
-pub struct Program(Vec<Declaration>);
+pub struct AST<'a> {
+    pub decls: Vec<Declaration<'a>>,
+}
 
-impl Program {
-    pub fn new(mut tokens: &[Token]) -> Result<Program, Box<dyn Error>> {
-        let mut program = Vec::new();
+impl AST<'_> {
+    pub fn new(mut tokens: &[Token]) -> Result<AST, Box<dyn Error>> {
+        let mut decls = Vec::new();
 
         while !tokens.is_empty() {
             let decl = Declaration::new(tokens);
@@ -39,7 +36,7 @@ impl Program {
                     panic!("panic")
                 }
                 Ok((expr, rest_tokens)) => {
-                    program.push(expr);
+                    decls.push(expr);
 
                     // Update tok_slice to the remaining tokens
                     tokens = rest_tokens;
@@ -47,13 +44,13 @@ impl Program {
             }
         }
 
-        let program = Program(program);
+        let ast = AST { decls };
 
-        Ok(program)
+        Ok(ast)
     }
 
     pub fn run(&self) -> Result<(), Box<dyn Error>> {
-        for stmt in &self.0 {
+        for stmt in &self.decls {
             let value = stmt.eval()?;
 
             dbg!(value);
@@ -63,12 +60,12 @@ impl Program {
 }
 
 #[derive(Debug)]
-enum Declaration {
-    VarDecl(VarDecl),
-    Statement(Statement),
+pub enum Declaration<'a> {
+    VarDecl(VarDecl<'a>),
+    Statement(Statement<'a>),
 }
 
-impl Declaration {
+impl Declaration<'_> {
     pub fn new(tokens: &[Token]) -> Result<(Declaration, &[Token]), Box<dyn Error>> {
         if let Some(token) = tokens.get(0) {
             match token.token_type {
@@ -91,7 +88,7 @@ impl Declaration {
     }
 }
 
-impl Evaluate for Declaration {
+impl Evaluate for Declaration<'_> {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Declaration::Statement(stmt) => stmt.eval()?,
@@ -103,9 +100,9 @@ impl Evaluate for Declaration {
 }
 
 #[derive(Debug)]
-struct VarDecl(Identifier, Expr);
+struct VarDecl<'a>(pub Identifier<'a>, pub Expr<'a>);
 
-impl VarDecl {
+impl VarDecl<'_> {
     pub fn new(tokens: &[Token]) -> Result<(VarDecl, &[Token]), Box<dyn Error>> {
         let identifier = match tokens.get(..=1) {
             Some([iden_token, eq_token]) => match (&iden_token.token_type, &eq_token.token_type) {
@@ -126,7 +123,7 @@ impl VarDecl {
             }
         };
 
-        let identifier = Identifier(identifier.to_string());
+        let identifier = Identifier::Unresolved(identifier.to_string());
         let rest_tokens = &tokens[2..];
         let (expr, rest_tokens) = Expr::new(rest_tokens)?;
 
@@ -134,7 +131,7 @@ impl VarDecl {
     }
 }
 
-impl Evaluate for VarDecl {
+impl Evaluate for VarDecl<'_> {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = self.1.eval()?;
 
@@ -143,12 +140,12 @@ impl Evaluate for VarDecl {
 }
 
 #[derive(Debug)]
-pub enum Statement {
-    ExprStatement(ExprStatement),
-    PrintStatement(PrintStatement),
+pub enum Statement<'a> {
+    ExprStatement(ExprStatement<'a>),
+    PrintStatement(PrintStatement<'a>),
 }
 
-impl Statement {
+impl Statement<'_> {
     pub fn new(tokens: &[Token]) -> Result<(Statement, &[Token]), Box<dyn Error>> {
         if let Some(p) = tokens.get(0) {
             match p.token_type {
@@ -167,7 +164,7 @@ impl Statement {
     }
 }
 
-impl Evaluate for Statement {
+impl Evaluate for Statement<'_> {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Self::ExprStatement(e) => e.eval()?,
@@ -179,9 +176,9 @@ impl Evaluate for Statement {
 }
 
 #[derive(Debug)]
-pub struct ExprStatement(Expr);
+pub struct ExprStatement<'a>(pub Expr<'a>);
 
-impl ExprStatement {
+impl ExprStatement<'_> {
     pub fn new(tokens: &[Token]) -> Result<(ExprStatement, &[Token]), Box<dyn Error>> {
         let (expr, rest_tokens) = Expr::new(tokens)?;
 
@@ -189,7 +186,7 @@ impl ExprStatement {
     }
 }
 
-impl Evaluate for ExprStatement {
+impl Evaluate for ExprStatement<'_> {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = self.0.eval()?;
 
@@ -198,9 +195,9 @@ impl Evaluate for ExprStatement {
 }
 
 #[derive(Debug)]
-pub struct PrintStatement(Expr);
+pub struct PrintStatement<'a>(pub Expr<'a>);
 
-impl PrintStatement {
+impl PrintStatement<'_> {
     pub fn new(tokens: &[Token]) -> Result<(PrintStatement, &[Token]), Box<dyn Error>> {
         let (expr, rest_tokens) = Expr::new(tokens)?;
 
@@ -208,7 +205,7 @@ impl PrintStatement {
     }
 }
 
-impl Evaluate for PrintStatement {
+impl Evaluate for PrintStatement<'_> {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = self.0.eval()?;
 
@@ -234,17 +231,17 @@ impl Evaluate for PrintStatement {
 }
 
 #[derive(Debug)]
-pub enum Expr {
+pub enum Expr<'a> {
     // Literal(Literal),
     // Grouping(Grouping),
-    Unary(Unary),
-    Binary(Binary),
+    Unary(Unary<'a>),
+    Binary(Binary<'a>),
     // Operator(Operator),
     // Equality(Equality),
-    Primary(Primary),
+    Primary(Primary<'a>),
 }
 
-impl Expr {
+impl Expr<'_> {
     pub fn new(tokens: &[Token]) -> Result<(Expr, &[Token]), Box<dyn Error>> {
         // Everything is a binary expr or something derived from one
 
@@ -260,7 +257,7 @@ impl Expr {
     }
 }
 
-impl Evaluate for Expr {
+impl Evaluate for Expr<'_> {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Expr::Primary(p) => p.eval()?,
@@ -273,9 +270,9 @@ impl Evaluate for Expr {
 
 // // Not sure about this one but we'll leave for nows
 #[derive(Debug)]
-pub struct Grouping(Box<Expr>);
+pub struct Grouping<'a>(Box<Expr<'a>>);
 
-impl Grouping {
+impl Grouping<'_> {
     pub fn new(tokens: &[Token]) -> Result<(Grouping, &[Token]), Box<dyn Error>> {
         let mut index = 1;
         while let Some(token) = tokens.get(index) {
@@ -307,20 +304,20 @@ impl Grouping {
     }
 }
 
-impl Evaluate for Grouping {
+impl Evaluate for Grouping<'_> {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         self.0.eval()
     }
 }
 
 #[derive(Debug)]
-pub enum Binary {
-    BinaryExpr(Box<Binary>, Operator, Box<Binary>),
-    Unary(Unary),
-    Primary(Primary),
+pub enum Binary<'a> {
+    BinaryExpr(Box<Binary<'a>>, Operator, Box<Binary<'a>>),
+    Unary(Unary<'a>),
+    Primary(Primary<'a>),
 }
 
-impl Binary {
+impl Binary<'_> {
     pub fn new(tokens: &[Token]) -> Result<(Binary, &[Token]), Box<dyn Error>> {
         Binary::equality(tokens)
     }
@@ -413,7 +410,7 @@ impl Binary {
     }
 }
 
-impl Evaluate for Binary {
+impl Evaluate for Binary<'_> {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Binary::Primary(p) => p.eval()?,
@@ -552,12 +549,12 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug)]
-pub enum Unary {
-    UnaryExpr(UnaryOp, Box<Unary>),
-    Primary(Primary),
+pub enum Unary<'a> {
+    UnaryExpr(UnaryOp, Box<Unary<'a>>),
+    Primary(Primary<'a>),
 }
 
-impl Unary {
+impl Unary<'_> {
     pub fn new(tokens: &[Token]) -> Result<(Unary, &[Token]), Box<dyn Error>> {
         let un_op = match tokens.get(0) {
             Some(op) => match op.token_type {
@@ -581,7 +578,7 @@ impl Unary {
     }
 }
 
-impl Evaluate for Unary {
+impl Evaluate for Unary<'_> {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Unary::Primary(p) => p.eval()?,
@@ -604,17 +601,17 @@ impl Evaluate for Unary {
 }
 
 #[derive(Debug)]
-pub enum Primary {
+pub enum Primary<'a> {
     NUMBER(f64),
     STRING(String),
-    Identifier(Identifier),
+    Identifier(Identifier<'a>),
     True,
     False,
     Nil,
-    Grouping(Grouping),
+    Grouping(Grouping<'a>),
 }
 
-impl Primary {
+impl Primary<'_> {
     pub fn new(tokens: &[Token]) -> Result<(Primary, &[Token]), Box<dyn Error>> {
         let token = match tokens.get(0) {
             Some(t) => t,
@@ -644,7 +641,7 @@ impl Primary {
     }
 }
 
-impl Evaluate for Primary {
+impl Evaluate for Primary<'_> {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let val = match self {
             Primary::NUMBER(num) => Value::Number(*num),
@@ -652,7 +649,18 @@ impl Evaluate for Primary {
             Primary::True => Value::Bool(true),
             Primary::False => Value::Bool(false),
             Primary::Nil => Value::Nil,
-            Primary::Identifier(str) => Value::String(str.0.to_string()),
+            Primary::Identifier(str) => match str {
+                // TODO: Figure this out
+                Identifier::Unresolved(str) => {
+                    let message = format!("I Don't Think This Should be resolved yet?, {}", str);
+                    return Err(Box::new(ScanError::new(message)));
+                }
+                Identifier::Resolved { name, scope } => {
+                    // TODO: Fix this hard coding
+                    let value = scope.values.get(name);
+                    value.unwrap().clone().unwrap()
+                }
+            },
             Primary::Grouping(g) => g.eval()?,
         };
         Ok(val)
@@ -673,5 +681,11 @@ pub enum Operator {
     LessEqual,
 }
 
-#[derive(Debug)]
-pub struct Identifier(String);
+#[derive(Debug, Clone)]
+pub enum Identifier<'a> {
+    Unresolved(String),
+    Resolved {
+        name: String,
+        scope: &'a Environment,
+    },
+}

@@ -9,7 +9,7 @@ mod interpreter;
 mod parser;
 mod resolver;
 mod scanner;
-use grammar::{Evaluate, Program};
+use grammar::{Evaluate, AST};
 use parser::Parser;
 use scanner::Scanner;
 
@@ -25,7 +25,7 @@ pub fn run_file(filename: &String) -> Result<(), Box<dyn Error>> {
 
     let tokens = scanner.scan_tokens()?;
 
-    let program = Program::new(tokens)?;
+    let program = AST::new(tokens)?;
 
     program.run()?;
 
@@ -45,7 +45,7 @@ pub fn run_prompt() -> Result<(), Box<dyn Error>> {
 
         let tokens = scanner.scan_tokens()?;
 
-        let program = Program::new(tokens)?;
+        let program = AST::new(tokens)?;
 
         program.run()?;
     }
