@@ -139,7 +139,7 @@ impl Evaluate for VarDecl<'_> {
                     "Somehow identifier is not resolved here during var decl",
                 )));
             }
-            Identifier::Resolved { name, scope } => (name, scope),
+            Identifier::Resolved { name, env: scope } => (name, scope),
         };
 
         let val = self.1.eval()?;
@@ -689,10 +689,7 @@ pub enum Operator {
 #[derive(Debug, Clone)]
 pub enum Identifier<'a> {
     Unresolved(String),
-    Resolved {
-        name: String,
-        scope: &'a Environment,
-    },
+    Resolved { name: String, env: &'a Environment },
 }
 
 impl Evaluate for Identifier<'_> {
@@ -702,7 +699,7 @@ impl Evaluate for Identifier<'_> {
                 let message = format!("This Identifier was Never Resolved {}", str);
                 return Err(Box::new(ScanError::new(message)));
             }
-            Identifier::Resolved { name, scope } => {
+            Identifier::Resolved { name, env: scope } => {
                 let values = scope.values.borrow_mut();
                 let value = values.get(name).cloned();
 

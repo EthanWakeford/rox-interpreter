@@ -10,36 +10,90 @@ use crate::{grammar::*, scanner::ScanError};
 // b. Variables
 // Both of which are variants of "Primary" enum
 
-// We return a new Program that has names resovled, and Environments created
-pub fn analyze(ast: AST) -> Result<(), Box<dyn Error>> {
-    let mut global = Environment::new();
+// We return a new AST that has names resolved, and Environments created
+pub fn analyze(ast: AST) -> Result<ResolvedAST, Box<dyn Error>> {
+    let global = Environment::new();
 
-    // Resolve
+    // Resolve declarations
     for decl in ast.decls {
         match decl {
-            Declaration::VarDecl(vd) => {
-                let iden = vd.0;
-                match iden {
-                    // We can overwrite variables
-                    Identifier::Resolved { name, scope } => {}
-                    // Everything starts unresolved
-                    Identifier::Unresolved(name) => {
-                        // We dont' worry about the expression right now, only adding key to map
-                        global.values.get_mut().insert(name, None);
-                    }
+            Declaration::VarDecl(mut vd) => {
+                resolve_var_decl(&mut vd, &global)?;
+            }
+            Declaration::Statement(stmt) => match stmt {
+                Statement::PrintStatement(pstmt) => {
+                    resolve_expr(pstmt.0, &global)?;
                 }
-            }
-            Declaration::Statement(stmt) => {
-                match stmt {
-                    // Check if value exists here
-                    Statement::PrintStatement(pstmt) => resolve_expr(pstmt.0, &global)?,
-
-                    Statement::ExprStatement(estmt) => resolve_expr(estmt.0, &global)?,
-                };
-            }
+                Statement::ExprStatement(estmt) => {
+                    resolve_expr(estmt.0, &global)?;
+                }
+            },
         }
     }
 
+    // Create scope after resolving declarations
+    let scope = Scope::new(ast.decls, global)?;
+
+    let resolved_ast = ResolvedAST::new(scope)?;
+    Ok(resolved_ast)
+}
+
+fn resolve_identifier<'a>(
+    identifier: &mut Identifier<'a>,
+    env: &'a Environment,
+) -> Result<(), Box<dyn Error>> {
+    match identifier {
+        Identifier::Unresolved(name) => {
+            // Check to see if value has been declared to hashmap
+            let values = env.values.borrow_mut();
+            let value = values.get(name);
+            match value {
+                // If exists, resolve
+                Some(val) => {
+                    let name = name.to_string();
+                    // Update identifier
+                    *identifier = Identifier::Resolved { name, env: &env };
+                }
+                // If not, Error
+                None => {
+                    let message = format!("Value referenced before initialization: {}", name,);
+                    return Err(Box::new(ScanError::new(message)));
+                }
+            }
+        }
+        Identifier::Resolved { name, env: _ } => {
+            let message = format!(
+                "Somehow trying to resolved an already resolved value: {}",
+                name
+            );
+            return Err(Box::new(ScanError::new(message)));
+        }
+    };
+
+    Ok(())
+}
+
+fn resolve_var_decl<'a>(vd: &mut VarDecl<'a>, env: &'a Environment) -> Result<(), Box<dyn Error>> {
+    let iden = &mut vd.0;
+    match iden {
+        Identifier::Resolved { name, env: _ } => {
+            let message = format!(
+                "Somehow trying to resolved an already resolved value: {}",
+                name
+            );
+            return Err(Box::new(ScanError::new(message)));
+        }
+        Identifier::Unresolved(name) => {
+            // We dont' worry about the expression right now, only adding key to map
+            let mut values = env.values.borrow_mut();
+            values.insert(name.clone(), None);
+
+            *iden = Identifier::Resolved {
+                name: name.clone(),
+                env: env,
+            };
+        }
+    }
     Ok(())
 }
 
@@ -52,42 +106,20 @@ fn resolve_expr(expr: Expr, env: &Environment) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn resolve_primary(primary: Primary, env: &Environment) -> Result<(), Box<dyn Error>> {
+pub fn resolve_primary<'a>(
+    primary: Primary<'a>,
+    env: &'a Environment,
+) -> Result<(), Box<dyn Error>> {
     match primary {
-        Primary::Identifier(iden) => {
-            match iden {
-                Identifier::Unresolved(name) => {
-                    let values = env.values.borrow_mut();
-                    let value = values.get(&name);
-                    match value {
-                        // If exists, resolve
-                        Some(val) => {
-                            let resolved = Identifier::Resolved { name, scope: env };
-                            // TODO: return this here somewhere
-                        }
-                        // If not, Error
-                        None => {
-                            let message =
-                                format!("Value referenced before initialization: {}", name,);
-                            return Err(Box::new(ScanError::new(message)));
-                        }
-                    }
-                }
-                Identifier::Resolved { name, scope } => {
-                    let message = format!(
-                        "Somehow trying to resolved an already resolved value: {}",
-                        name
-                    );
-                    return Err(Box::new(ScanError::new(message)));
-                }
-            }
+        Primary::Identifier(mut iden) => {
+            resolve_identifier(&mut iden, env)?;
         }
         // TODO: do something when its a grouping
         Primary::Grouping(g) => (),
         // Do nothing if anything else
         _ => (),
     };
-    // TODO: hardcode return
+
     Ok(())
 }
 
@@ -146,11 +178,11 @@ impl Environment {
     }
 }
 
-pub struct Scope<'a>(Declaration<'a>, Environment);
+pub struct Scope<'a>(Vec<Declaration<'a>>, Environment);
 
 impl Scope<'_> {
-    pub fn new(decl: Declaration, env: Environment) -> Result<Scope, Box<dyn Error>> {
-        Ok(Scope(decl, env))
+    pub fn new(decls: Vec<Declaration>, env: Environment) -> Result<Scope, Box<dyn Error>> {
+        Ok(Scope(decls, env))
 
         // match stmt {
         //     Statement::ExprStatement()
