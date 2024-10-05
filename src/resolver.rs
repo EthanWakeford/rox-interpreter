@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, error::Error, rc::Rc};
+use std::{borrow::BorrowMut, cell::RefCell, collections::HashMap, error::Error, rc::Rc};
 
 use crate::{grammar::*, scanner::ScanError};
 
@@ -9,9 +9,7 @@ fn resolve_identifier(
     match identifier {
         Identifier::Unresolved(name) => {
             // Check to see if value has been declared to hashmap
-            let env_copy = env.borrow_mut();
-            let values_map = env_copy.values.borrow_mut();
-            let value = values_map.get(name);
+            let value = env.borrow().get(name);
 
             match value {
                 // If exists, resolve
@@ -57,9 +55,7 @@ fn resolve_var_decl(vd: &mut VarDecl, env: Rc<RefCell<Environment>>) -> Result<(
         }
         Identifier::Unresolved(name) => {
             // We dont' worry about the expression right now, only adding key to map
-            let values_map = &env.borrow_mut().values;
-            let mut values_map = values_map.borrow_mut();
-            values_map.insert(name.clone(), None);
+            env.borrow().declare(name);
 
             *iden = Identifier::Resolved {
                 name: name.clone(),
@@ -140,34 +136,42 @@ pub fn resolve_binary(
 
 #[derive(Debug, Clone)]
 pub struct Environment {
-    pub nested: Vec<Box<Environment>>,
+    pub enclosing: Option<Rc<RefCell<Environment>>>,
     pub values: RefCell<HashMap<String, Option<Value>>>,
 }
 
 impl Environment {
-    pub fn new() -> Environment {
-        let nested: Vec<Box<Environment>> = Vec::new();
+    pub fn new(enclosing: Option<Rc<RefCell<Environment>>>) -> Environment {
         let variables: HashMap<String, Option<Value>> = HashMap::new();
 
         Environment {
-            nested,
+            enclosing,
             values: RefCell::new(variables),
         }
     }
 
-    pub fn decl(&mut self, name: String) {
-        self.values.borrow_mut().insert(name, None);
+    fn next(&self) -> Option<Rc<RefCell<Environment>>> {
+        self.enclosing.clone()
     }
 
-    pub fn set(&mut self, name: String, value: Value) {
-        self.values.borrow_mut().insert(name, Some(value));
-    }
-
-    pub fn get(&self, name: &str) -> Option<Value> {
-        match self.values.borrow_mut().get(name) {
-            None => None,
-            Some(val) => val.clone(),
+    pub fn get(&self, name: &String) -> Option<Option<Value>> {
+        if let Some(value) = self.values.borrow().get(name).cloned() {
+            return Some(value);
         }
+
+        // Search through enclosings
+        match &self.enclosing {
+            Some(enclosing) => enclosing.borrow().get(name),
+            None => None,
+        }
+    }
+
+    pub fn declare(&self, name: &String) {
+        self.values.borrow_mut().insert(name.to_string(), None);
+    }
+
+    pub fn assign(&self, name: &String, value: Option<Value>) {
+        self.values.borrow_mut().insert(name.to_string(), value);
     }
 }
 
@@ -178,7 +182,7 @@ pub struct Scope {
 
 impl Scope {
     pub fn new(mut decls: Vec<Declaration>) -> Result<Scope, Box<dyn Error>> {
-        let global = Rc::new(RefCell::new(Environment::new()));
+        let global = Rc::new(RefCell::new(Environment::new(None)));
 
         // Resolve declarations
         for decl in decls.as_mut_slice() {

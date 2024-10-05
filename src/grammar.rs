@@ -144,9 +144,8 @@ impl Evaluate for VarDecl {
 
         let val = self.1.eval()?;
 
-        let values_map = &scope.borrow_mut().values;
-        let mut values_map = values_map.borrow_mut();
-        values_map.insert(name.to_string(), Some(val));
+        // Nil values not set to none rn, just Value::nil
+        scope.borrow().assign(name, Some(val));
 
         Ok(Value::Nil)
     }
@@ -325,11 +324,12 @@ impl Evaluate for Assignment {
             Identifier::Resolved { name, env: scope } => (name, scope),
         };
 
+        // Currently no type checks happening
+        // So the langauge is dynamically typed
+
         let val = self.1.eval()?;
 
-        let values_map = &scope.borrow_mut().values;
-        let mut values_map = values_map.borrow_mut();
-        values_map.insert(name.to_string(), Some(val));
+        scope.borrow().assign(name, Some(val));
 
         Ok(Value::Nil)
     }
@@ -756,10 +756,8 @@ impl Evaluate for Identifier {
                 let message = format!("This Identifier was Never Resolved {}", str);
                 return Err(Box::new(ScanError::new(message)));
             }
-            Identifier::Resolved { name, env: scope } => {
-                let values_map = &scope.borrow_mut().values;
-                let values_map = values_map.borrow_mut();
-                let value = values_map.get(name);
+            Identifier::Resolved { name, env } => {
+                let value = env.borrow().get(name);
 
                 // if empty here not in scope
                 // TODO: look in parent scope
