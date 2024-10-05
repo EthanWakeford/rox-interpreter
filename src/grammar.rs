@@ -1,4 +1,4 @@
-use std::{error::Error, thread::Scope};
+use std::{cell::RefCell, error::Error, rc::Rc};
 
 use crate::{
     resolver::Environment,
@@ -18,11 +18,11 @@ pub trait Evaluate {
 }
 
 #[derive(Debug)]
-pub struct AST<'a> {
-    pub decls: Vec<Declaration<'a>>,
+pub struct AST {
+    pub decls: Vec<Declaration>,
 }
 
-impl AST<'_> {
+impl AST {
     pub fn new(mut tokens: &[Token]) -> Result<AST, Box<dyn Error>> {
         let mut decls = Vec::new();
 
@@ -60,12 +60,12 @@ impl AST<'_> {
 }
 
 #[derive(Debug)]
-pub enum Declaration<'a> {
-    VarDecl(VarDecl<'a>),
-    Statement(Statement<'a>),
+pub enum Declaration {
+    VarDecl(VarDecl),
+    Statement(Statement),
 }
 
-impl Declaration<'_> {
+impl Declaration {
     pub fn new(tokens: &[Token]) -> Result<(Declaration, &[Token]), Box<dyn Error>> {
         if let Some(token) = tokens.get(0) {
             match token.token_type {
@@ -88,7 +88,7 @@ impl Declaration<'_> {
     }
 }
 
-impl Evaluate for Declaration<'_> {
+impl Evaluate for Declaration {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Declaration::Statement(stmt) => stmt.eval()?,
@@ -100,9 +100,9 @@ impl Evaluate for Declaration<'_> {
 }
 
 #[derive(Debug)]
-pub struct VarDecl<'a>(pub Identifier<'a>, pub Expr<'a>);
+pub struct VarDecl(pub Identifier, pub Expr);
 
-impl VarDecl<'_> {
+impl VarDecl {
     pub fn new(tokens: &[Token]) -> Result<(VarDecl, &[Token]), Box<dyn Error>> {
         let identifier = match tokens.get(..=1) {
             Some([iden_token, eq_token]) => match (&iden_token.token_type, &eq_token.token_type) {
@@ -131,7 +131,7 @@ impl VarDecl<'_> {
     }
 }
 
-impl Evaluate for VarDecl<'_> {
+impl Evaluate for VarDecl {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let (name, scope) = match &self.0 {
             Identifier::Unresolved(_name) => {
@@ -143,22 +143,20 @@ impl Evaluate for VarDecl<'_> {
         };
 
         let val = self.1.eval()?;
-        scope
-            .values
-            .borrow_mut()
-            .insert(name.to_string(), Some(val));
+        let values_map = &mut scope.borrow_mut().values.clone().into_inner();
+        values_map.insert(name.to_string(), Some(val));
 
         Ok(Value::Nil)
     }
 }
 
 #[derive(Debug)]
-pub enum Statement<'a> {
-    ExprStatement(ExprStatement<'a>),
-    PrintStatement(PrintStatement<'a>),
+pub enum Statement {
+    ExprStatement(ExprStatement),
+    PrintStatement(PrintStatement),
 }
 
-impl Statement<'_> {
+impl Statement {
     pub fn new(tokens: &[Token]) -> Result<(Statement, &[Token]), Box<dyn Error>> {
         if let Some(p) = tokens.get(0) {
             match p.token_type {
@@ -177,7 +175,7 @@ impl Statement<'_> {
     }
 }
 
-impl Evaluate for Statement<'_> {
+impl Evaluate for Statement {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Self::ExprStatement(e) => e.eval()?,
@@ -189,9 +187,9 @@ impl Evaluate for Statement<'_> {
 }
 
 #[derive(Debug)]
-pub struct ExprStatement<'a>(pub Expr<'a>);
+pub struct ExprStatement(pub Expr);
 
-impl ExprStatement<'_> {
+impl ExprStatement {
     pub fn new(tokens: &[Token]) -> Result<(ExprStatement, &[Token]), Box<dyn Error>> {
         let (expr, rest_tokens) = Expr::new(tokens)?;
 
@@ -199,7 +197,7 @@ impl ExprStatement<'_> {
     }
 }
 
-impl Evaluate for ExprStatement<'_> {
+impl Evaluate for ExprStatement {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = self.0.eval()?;
 
@@ -208,9 +206,9 @@ impl Evaluate for ExprStatement<'_> {
 }
 
 #[derive(Debug)]
-pub struct PrintStatement<'a>(pub Expr<'a>);
+pub struct PrintStatement(pub Expr);
 
-impl PrintStatement<'_> {
+impl PrintStatement {
     pub fn new(tokens: &[Token]) -> Result<(PrintStatement, &[Token]), Box<dyn Error>> {
         let (expr, rest_tokens) = Expr::new(tokens)?;
 
@@ -218,7 +216,7 @@ impl PrintStatement<'_> {
     }
 }
 
-impl Evaluate for PrintStatement<'_> {
+impl Evaluate for PrintStatement {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = self.0.eval()?;
 
@@ -244,17 +242,17 @@ impl Evaluate for PrintStatement<'_> {
 }
 
 #[derive(Debug)]
-pub enum Expr<'a> {
+pub enum Expr {
     // Literal(Literal),
     // Grouping(Grouping),
-    Unary(Unary<'a>),
-    Binary(Binary<'a>),
+    Unary(Unary),
+    Binary(Binary),
     // Operator(Operator),
     // Equality(Equality),
-    Primary(Primary<'a>),
+    Primary(Primary),
 }
 
-impl Expr<'_> {
+impl Expr {
     pub fn new(tokens: &[Token]) -> Result<(Expr, &[Token]), Box<dyn Error>> {
         // Everything is a binary expr or something derived from one
 
@@ -270,7 +268,7 @@ impl Expr<'_> {
     }
 }
 
-impl Evaluate for Expr<'_> {
+impl Evaluate for Expr {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Expr::Primary(p) => p.eval()?,
@@ -283,9 +281,9 @@ impl Evaluate for Expr<'_> {
 
 // // Not sure about this one but we'll leave for nows
 #[derive(Debug)]
-pub struct Grouping<'a>(Box<Expr<'a>>);
+pub struct Grouping(Box<Expr>);
 
-impl Grouping<'_> {
+impl Grouping {
     pub fn new(tokens: &[Token]) -> Result<(Grouping, &[Token]), Box<dyn Error>> {
         let mut index = 1;
         while let Some(token) = tokens.get(index) {
@@ -317,20 +315,20 @@ impl Grouping<'_> {
     }
 }
 
-impl Evaluate for Grouping<'_> {
+impl Evaluate for Grouping {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         self.0.eval()
     }
 }
 
 #[derive(Debug)]
-pub enum Binary<'a> {
-    BinaryExpr(Box<Binary<'a>>, Operator, Box<Binary<'a>>),
-    Unary(Unary<'a>),
-    Primary(Primary<'a>),
+pub enum Binary {
+    BinaryExpr(Box<Binary>, Operator, Box<Binary>),
+    Unary(Unary),
+    Primary(Primary),
 }
 
-impl Binary<'_> {
+impl Binary {
     pub fn new(tokens: &[Token]) -> Result<(Binary, &[Token]), Box<dyn Error>> {
         Binary::equality(tokens)
     }
@@ -423,7 +421,7 @@ impl Binary<'_> {
     }
 }
 
-impl Evaluate for Binary<'_> {
+impl Evaluate for Binary {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Binary::Primary(p) => p.eval()?,
@@ -562,12 +560,12 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug)]
-pub enum Unary<'a> {
-    UnaryExpr(UnaryOp, Box<Unary<'a>>),
-    Primary(Primary<'a>),
+pub enum Unary {
+    UnaryExpr(UnaryOp, Box<Unary>),
+    Primary(Primary),
 }
 
-impl Unary<'_> {
+impl Unary {
     pub fn new(tokens: &[Token]) -> Result<(Unary, &[Token]), Box<dyn Error>> {
         let un_op = match tokens.get(0) {
             Some(op) => match op.token_type {
@@ -591,7 +589,7 @@ impl Unary<'_> {
     }
 }
 
-impl Evaluate for Unary<'_> {
+impl Evaluate for Unary {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Unary::Primary(p) => p.eval()?,
@@ -614,17 +612,17 @@ impl Evaluate for Unary<'_> {
 }
 
 #[derive(Debug)]
-pub enum Primary<'a> {
+pub enum Primary {
     NUMBER(f64),
     STRING(String),
-    Identifier(Identifier<'a>),
+    Identifier(Identifier),
     True,
     False,
     Nil,
-    Grouping(Grouping<'a>),
+    Grouping(Grouping),
 }
 
-impl Primary<'_> {
+impl Primary {
     pub fn new(tokens: &[Token]) -> Result<(Primary, &[Token]), Box<dyn Error>> {
         let token = match tokens.get(0) {
             Some(t) => t,
@@ -657,7 +655,7 @@ impl Primary<'_> {
     }
 }
 
-impl Evaluate for Primary<'_> {
+impl Evaluate for Primary {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let val = match self {
             Primary::NUMBER(num) => Value::Number(*num),
@@ -687,12 +685,15 @@ pub enum Operator {
 }
 
 #[derive(Debug, Clone)]
-pub enum Identifier<'a> {
+pub enum Identifier {
     Unresolved(String),
-    Resolved { name: String, env: &'a Environment },
+    Resolved {
+        name: String,
+        env: Rc<RefCell<Environment>>,
+    },
 }
 
-impl Evaluate for Identifier<'_> {
+impl Evaluate for Identifier {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Identifier::Unresolved(str) => {
@@ -700,8 +701,9 @@ impl Evaluate for Identifier<'_> {
                 return Err(Box::new(ScanError::new(message)));
             }
             Identifier::Resolved { name, env: scope } => {
-                let values = scope.values.borrow_mut();
-                let value = values.get(name).cloned();
+                let values = &scope.borrow_mut().values;
+                let value = values.clone().into_inner();
+                let value = value.get(name);
 
                 // if empty here not in scope
                 // TODO: look in parent scope
@@ -715,12 +717,12 @@ impl Evaluate for Identifier<'_> {
                             let message = format!("This Identifier was never initialized, also should have been caught before this {}", name);
                             return Err(Box::new(ScanError::new(message)));
                         }
-                        Some(val) => val,
+                        Some(val) => val.clone(),
                     },
                 }
             }
         };
 
-        Ok(value.clone())
+        Ok(value)
     }
 }

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, error::Error};
+use std::{cell::RefCell, collections::HashMap, error::Error, rc::Rc};
 
 use crate::{grammar::*, scanner::ScanError};
 
@@ -11,48 +11,48 @@ use crate::{grammar::*, scanner::ScanError};
 // Both of which are variants of "Primary" enum
 
 // We return a new AST that has names resolved, and Environments created
-pub fn analyze(ast: AST) -> Result<ResolvedAST, Box<dyn Error>> {
-    let global = Environment::new();
+// pub fn analyze(ast: AST) -> Result<ResolvedAST, Box<dyn Error>> {
+//     let global = Environment::new();
 
-    // Resolve declarations
-    for decl in ast.decls {
-        match decl {
-            Declaration::VarDecl(mut vd) => {
-                resolve_var_decl(&mut vd, &global)?;
-            }
-            Declaration::Statement(stmt) => match stmt {
-                Statement::PrintStatement(pstmt) => {
-                    resolve_expr(pstmt.0, &global)?;
-                }
-                Statement::ExprStatement(estmt) => {
-                    resolve_expr(estmt.0, &global)?;
-                }
-            },
-        }
-    }
+//     // Resolve declarations
+//     for decl in ast.decls {
+//         match decl {
+//             Declaration::VarDecl(mut vd) => {
+//                 resolve_var_decl(&mut vd, &global)?;
+//             }
+//             Declaration::Statement(stmt) => match stmt {
+//                 Statement::PrintStatement(pstmt) => {
+//                     resolve_expr(pstmt.0, &global)?;
+//                 }
+//                 Statement::ExprStatement(estmt) => {
+//                     resolve_expr(estmt.0, &global)?;
+//                 }
+//             },
+//         }
+//     }
 
-    // Create scope after resolving declarations
-    let scope = Scope::new(ast.decls, global)?;
+//     // Create scope after resolving declarations
+//     let scope = Scope::new(ast.decls, global)?;
 
-    let resolved_ast = ResolvedAST::new(scope)?;
-    Ok(resolved_ast)
-}
+//     let resolved_ast = ResolvedAST::new(scope)?;
+//     Ok(resolved_ast)
+// }
 
-fn resolve_identifier<'a>(
-    identifier: &mut Identifier<'a>,
-    env: &'a Environment,
+fn resolve_identifier(
+    identifier: &mut Identifier,
+    env: Rc<RefCell<Environment>>,
 ) -> Result<(), Box<dyn Error>> {
     match identifier {
         Identifier::Unresolved(name) => {
             // Check to see if value has been declared to hashmap
-            let values = env.values.borrow_mut();
+            let values = env.borrow_mut().values.clone().into_inner();
             let value = values.get(name);
             match value {
                 // If exists, resolve
-                Some(val) => {
+                Some(_) => {
                     let name = name.to_string();
                     // Update identifier
-                    *identifier = Identifier::Resolved { name, env: &env };
+                    *identifier = Identifier::Resolved { name, env };
                 }
                 // If not, Error
                 None => {
@@ -73,7 +73,7 @@ fn resolve_identifier<'a>(
     Ok(())
 }
 
-fn resolve_var_decl<'a>(vd: &mut VarDecl<'a>, env: &'a Environment) -> Result<(), Box<dyn Error>> {
+fn resolve_var_decl(vd: &mut VarDecl, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
     let iden = &mut vd.0;
     match iden {
         Identifier::Resolved { name, env: _ } => {
@@ -85,19 +85,19 @@ fn resolve_var_decl<'a>(vd: &mut VarDecl<'a>, env: &'a Environment) -> Result<()
         }
         Identifier::Unresolved(name) => {
             // We dont' worry about the expression right now, only adding key to map
-            let mut values = env.values.borrow_mut();
+            let mut values = env.borrow_mut().values.clone().into_inner();
             values.insert(name.clone(), None);
 
             *iden = Identifier::Resolved {
                 name: name.clone(),
-                env: env,
+                env: Rc::clone(&env),
             };
         }
     }
     Ok(())
 }
 
-fn resolve_expr(expr: Expr, env: &Environment) -> Result<(), Box<dyn Error>> {
+fn resolve_expr(expr: Expr, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
     match expr {
         Expr::Primary(p) => resolve_primary(p, env)?,
         Expr::Unary(u) => resolve_unary(u, env)?,
@@ -106,9 +106,9 @@ fn resolve_expr(expr: Expr, env: &Environment) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn resolve_primary<'a>(
-    primary: Primary<'a>,
-    env: &'a Environment,
+pub fn resolve_primary(
+    primary: Primary,
+    env: Rc<RefCell<Environment>>,
 ) -> Result<(), Box<dyn Error>> {
     match primary {
         Primary::Identifier(mut iden) => {
@@ -123,7 +123,7 @@ pub fn resolve_primary<'a>(
     Ok(())
 }
 
-pub fn resolve_unary(unary: Unary, env: &Environment) -> Result<(), Box<dyn Error>> {
+pub fn resolve_unary(unary: Unary, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
     match unary {
         Unary::Primary(p) => resolve_primary(p, env)?,
         Unary::UnaryExpr(__, u) => resolve_unary(*u, env)?,
@@ -132,13 +132,13 @@ pub fn resolve_unary(unary: Unary, env: &Environment) -> Result<(), Box<dyn Erro
     Ok(())
 }
 
-pub fn resolve_binary(binary: Binary, env: &Environment) -> Result<(), Box<dyn Error>> {
+pub fn resolve_binary(binary: Binary, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
     match binary {
         Binary::Primary(p) => resolve_primary(p, env)?,
         Binary::Unary(u) => resolve_unary(u, env)?,
         Binary::BinaryExpr(left, _, right) => {
-            resolve_binary(*left, &env)?;
-            resolve_binary(*right, &env)?;
+            resolve_binary(*left, env.clone())?;
+            resolve_binary(*right, env.clone())?;
         }
     }
 
@@ -178,22 +178,47 @@ impl Environment {
     }
 }
 
-pub struct Scope<'a>(Vec<Declaration<'a>>, Environment);
+pub struct Scope {
+    decls: Vec<Declaration>,
+    env: Rc<RefCell<Environment>>,
+}
 
-impl Scope<'_> {
-    pub fn new(decls: Vec<Declaration>, env: Environment) -> Result<Scope, Box<dyn Error>> {
-        Ok(Scope(decls, env))
+impl Scope {
+    pub fn new(mut decls: Vec<Declaration>) -> Result<Scope, Box<dyn Error>> {
+        let global = Rc::new(RefCell::new(Environment::new()));
 
-        // match stmt {
-        //     Statement::ExprStatement()
-        // }
+        // Resolve declarations
+        for decl in decls.as_mut_slice() {
+            match decl {
+                Declaration::VarDecl(ref mut vd) => {
+                    resolve_var_decl(vd, global.clone())?;
+                }
+                Declaration::Statement(stmt) => match stmt {
+                    Statement::PrintStatement(pstmt) => {
+                        let expr = pstmt.0;
+                        resolve_expr(expr, global.clone())?;
+                    }
+                    Statement::ExprStatement(ref mut estmt) => {
+                        resolve_expr(estmt.0, global.clone())?;
+                    }
+                },
+            }
+        }
+
+        // Create scope after resolving declarations
+        let scope = Scope { decls, env: global };
+
+        Ok(scope)
     }
 }
 
-pub struct ResolvedAST<'a>(Scope<'a>);
+pub struct ResolvedAST(Scope);
 
-impl ResolvedAST<'_> {
-    pub fn new(scope: Scope) -> Result<ResolvedAST, Box<dyn Error>> {
+impl ResolvedAST {
+    pub fn new(ast: AST) -> Result<ResolvedAST, Box<dyn Error>> {
+        let decls = ast.decls;
+        let scope = Scope::new(decls)?;
+
         Ok(ResolvedAST(scope))
     }
 }
