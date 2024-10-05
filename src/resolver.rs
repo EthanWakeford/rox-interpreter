@@ -97,7 +97,7 @@ fn resolve_var_decl(vd: &mut VarDecl, env: Rc<RefCell<Environment>>) -> Result<(
     Ok(())
 }
 
-fn resolve_expr(expr: Expr, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
+fn resolve_expr(expr: &mut Expr, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
     match expr {
         Expr::Primary(p) => resolve_primary(p, env)?,
         Expr::Unary(u) => resolve_unary(u, env)?,
@@ -107,12 +107,12 @@ fn resolve_expr(expr: Expr, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn
 }
 
 pub fn resolve_primary(
-    primary: Primary,
+    primary: &mut Primary,
     env: Rc<RefCell<Environment>>,
 ) -> Result<(), Box<dyn Error>> {
     match primary {
-        Primary::Identifier(mut iden) => {
-            resolve_identifier(&mut iden, env)?;
+        Primary::Identifier(ref mut iden) => {
+            resolve_identifier(iden, env)?;
         }
         // TODO: do something when its a grouping
         Primary::Grouping(g) => (),
@@ -123,22 +123,28 @@ pub fn resolve_primary(
     Ok(())
 }
 
-pub fn resolve_unary(unary: Unary, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
+pub fn resolve_unary(
+    unary: &mut Unary,
+    env: Rc<RefCell<Environment>>,
+) -> Result<(), Box<dyn Error>> {
     match unary {
         Unary::Primary(p) => resolve_primary(p, env)?,
-        Unary::UnaryExpr(__, u) => resolve_unary(*u, env)?,
+        Unary::UnaryExpr(__, u) => resolve_unary(u, env)?,
     }
 
     Ok(())
 }
 
-pub fn resolve_binary(binary: Binary, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
+pub fn resolve_binary(
+    binary: &mut Binary,
+    env: Rc<RefCell<Environment>>,
+) -> Result<(), Box<dyn Error>> {
     match binary {
         Binary::Primary(p) => resolve_primary(p, env)?,
         Binary::Unary(u) => resolve_unary(u, env)?,
         Binary::BinaryExpr(left, _, right) => {
-            resolve_binary(*left, env.clone())?;
-            resolve_binary(*right, env.clone())?;
+            resolve_binary(left, env.clone())?;
+            resolve_binary(right, env.clone())?;
         }
     }
 
@@ -193,13 +199,14 @@ impl Scope {
                 Declaration::VarDecl(ref mut vd) => {
                     resolve_var_decl(vd, global.clone())?;
                 }
-                Declaration::Statement(stmt) => match stmt {
-                    Statement::PrintStatement(pstmt) => {
-                        let expr = pstmt.0;
+                Declaration::Statement(ref mut stmt) => match stmt {
+                    Statement::PrintStatement(ref mut pstmt) => {
+                        let expr = &mut pstmt.0;
                         resolve_expr(expr, global.clone())?;
                     }
                     Statement::ExprStatement(ref mut estmt) => {
-                        resolve_expr(estmt.0, global.clone())?;
+                        let expr = &mut estmt.0;
+                        resolve_expr(expr, global.clone())?;
                     }
                 },
             }
