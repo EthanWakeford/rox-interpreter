@@ -11,6 +11,7 @@ mod resolver;
 mod scanner;
 use grammar::{Evaluate, AST};
 use parser::Parser;
+use resolver::ResolvedAST;
 use scanner::Scanner;
 
 pub fn print_error(line: u32, message: String) {
@@ -25,9 +26,11 @@ pub fn run_file(filename: &String) -> Result<(), Box<dyn Error>> {
 
     let tokens = scanner.scan_tokens()?;
 
-    let program = AST::new(tokens)?;
+    let ast = AST::new(tokens)?;
 
-    program.run()?;
+    let resolved_ast = ResolvedAST::new(ast)?;
+
+    interpret(resolved_ast)?;
 
     Ok(())
 }
@@ -45,8 +48,20 @@ pub fn run_prompt() -> Result<(), Box<dyn Error>> {
 
         let tokens = scanner.scan_tokens()?;
 
-        let program = AST::new(tokens)?;
+        let ast = AST::new(tokens)?;
 
-        program.run()?;
+        let resolved_ast = ResolvedAST::new(ast)?;
+
+        interpret(resolved_ast)?;
     }
+}
+
+pub fn interpret(ast: ResolvedAST) -> Result<(), Box<dyn Error>> {
+    let scope = ast.scope;
+    for stmt in scope.decls {
+        let value = stmt.eval()?;
+
+        dbg!(value);
+    }
+    Ok(())
 }

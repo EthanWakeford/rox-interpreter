@@ -45,14 +45,19 @@ fn resolve_identifier(
     match identifier {
         Identifier::Unresolved(name) => {
             // Check to see if value has been declared to hashmap
-            let values = env.borrow_mut().values.clone().into_inner();
+            let env_copy = env.borrow_mut();
+            let values = env_copy.values.borrow_mut();
             let value = values.get(name);
+
             match value {
                 // If exists, resolve
                 Some(_) => {
                     let name = name.to_string();
                     // Update identifier
-                    *identifier = Identifier::Resolved { name, env };
+                    *identifier = Identifier::Resolved {
+                        name,
+                        env: env.clone(),
+                    };
                 }
                 // If not, Error
                 None => {
@@ -85,8 +90,9 @@ fn resolve_var_decl(vd: &mut VarDecl, env: Rc<RefCell<Environment>>) -> Result<(
         }
         Identifier::Unresolved(name) => {
             // We dont' worry about the expression right now, only adding key to map
-            let mut values = env.borrow_mut().values.clone().into_inner();
-            values.insert(name.clone(), None);
+            let values_map = &env.borrow_mut().values;
+            let mut values_map = values_map.borrow_mut();
+            values_map.insert(name.clone(), None);
 
             *iden = Identifier::Resolved {
                 name: name.clone(),
@@ -185,8 +191,8 @@ impl Environment {
 }
 
 pub struct Scope {
-    decls: Vec<Declaration>,
-    env: Rc<RefCell<Environment>>,
+    pub decls: Vec<Declaration>,
+    pub env: Rc<RefCell<Environment>>,
 }
 
 impl Scope {
@@ -219,13 +225,15 @@ impl Scope {
     }
 }
 
-pub struct ResolvedAST(Scope);
+pub struct ResolvedAST {
+    pub scope: Scope,
+}
 
 impl ResolvedAST {
     pub fn new(ast: AST) -> Result<ResolvedAST, Box<dyn Error>> {
         let decls = ast.decls;
         let scope = Scope::new(decls)?;
 
-        Ok(ResolvedAST(scope))
+        Ok(ResolvedAST { scope })
     }
 }

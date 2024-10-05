@@ -143,7 +143,9 @@ impl Evaluate for VarDecl {
         };
 
         let val = self.1.eval()?;
-        let values_map = &mut scope.borrow_mut().values.clone().into_inner();
+
+        let values_map = &scope.borrow_mut().values;
+        let mut values_map = values_map.borrow_mut();
         values_map.insert(name.to_string(), Some(val));
 
         Ok(Value::Nil)
@@ -701,9 +703,9 @@ impl Evaluate for Identifier {
                 return Err(Box::new(ScanError::new(message)));
             }
             Identifier::Resolved { name, env: scope } => {
-                let values = &scope.borrow_mut().values;
-                let value = values.clone().into_inner();
-                let value = value.get(name);
+                let values_map = &scope.borrow_mut().values;
+                let values_map = values_map.borrow_mut();
+                let value = values_map.get(name);
 
                 // if empty here not in scope
                 // TODO: look in parent scope
