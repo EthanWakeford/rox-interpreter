@@ -10,8 +10,8 @@ fn resolve_identifier(
         Identifier::Unresolved(name) => {
             // Check to see if value has been declared to hashmap
             let env_copy = env.borrow_mut();
-            let values = env_copy.values.borrow_mut();
-            let value = values.get(name);
+            let values_map = env_copy.values.borrow_mut();
+            let value = values_map.get(name);
 
             match value {
                 // If exists, resolve
@@ -43,6 +43,9 @@ fn resolve_identifier(
 }
 
 fn resolve_var_decl(vd: &mut VarDecl, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
+    let expr = &mut vd.1;
+    resolve_expr(expr, env.clone())?;
+
     let iden = &mut vd.0;
     match iden {
         Identifier::Resolved { name, env: _ } => {

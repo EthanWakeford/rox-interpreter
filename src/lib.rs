@@ -58,9 +58,9 @@ pub fn run_prompt() -> Result<(), Box<dyn Error>> {
 pub fn interpret(ast: ResolvedAST) -> Result<(), Box<dyn Error>> {
     let scope = ast.scope;
     for stmt in scope.decls {
-        let value = stmt.eval()?;
+        let _value = stmt.eval()?;
 
-        dbg!(value);
+        // dbg!(value);
     }
     Ok(())
 }

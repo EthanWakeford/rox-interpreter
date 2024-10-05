@@ -1,5 +1,12 @@
 let x = 5
-x
+print x
+
 
 let x = x + 15
-x
+print "The value of x is "
+print x
+
+
+
+print "An expression is defined by {Primary ...whatever... Primary}"
+print "Where primary is any {literal, identifier, or grouping ()}"
