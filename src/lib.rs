@@ -5,8 +5,6 @@ use std::{
 };
 
 mod grammar;
-mod interpreter;
-mod parser;
 mod resolver;
 mod scanner;
 use grammar::{Evaluate, AST};

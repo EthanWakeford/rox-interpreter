@@ -1,6 +1,6 @@
 use std::{error::Error, fmt, iter::Peekable, str::Chars};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,

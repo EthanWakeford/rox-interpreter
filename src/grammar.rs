@@ -245,18 +245,28 @@ impl Evaluate for PrintStatement {
 
 #[derive(Debug)]
 pub enum Expr {
-    // Literal(Literal),
-    // Grouping(Grouping),
+    Assignment(Assignment),
     Unary(Unary),
     Binary(Binary),
-    // Operator(Operator),
-    // Equality(Equality),
     Primary(Primary),
 }
 
 impl Expr {
     pub fn new(tokens: &[Token]) -> Result<(Expr, &[Token]), Box<dyn Error>> {
-        // Everything is a binary expr or something derived from one
+        if let Some([identifier, assign_op]) = tokens.get(0..=1) {
+            match (identifier.token_type.clone(), assign_op.token_type.clone()) {
+                (TokenType::Identifier(_), TokenType::Equal) => {
+                    let (assign, rest_tokens) = Assignment::new(tokens)?;
+
+                    let expr = Expr::Assignment(assign);
+
+                    return Ok((expr, rest_tokens));
+                }
+                _ => (),
+            }
+        }
+
+        // All other expression types fallthrough to the other types
 
         let (binary, rest_tokens) = Binary::new(tokens)?;
 
@@ -273,11 +283,55 @@ impl Expr {
 impl Evaluate for Expr {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
+            Expr::Assignment(e) => e.eval()?,
             Expr::Primary(p) => p.eval()?,
             Expr::Unary(u) => u.eval()?,
             Expr::Binary(b) => b.eval()?,
         };
         Ok(value)
+    }
+}
+
+#[derive(Debug)]
+pub struct Assignment(pub Identifier, pub Box<Expr>);
+
+impl Assignment {
+    pub fn new(tokens: &[Token]) -> Result<(Assignment, &[Token]), Box<dyn Error>> {
+        if let Some([identifier, assign_op]) = tokens.get(0..=1) {
+            match (identifier.token_type.clone(), assign_op.token_type.clone()) {
+                (TokenType::Identifier(name), TokenType::Equal) => {
+                    let (expr, rest_tokens) = Expr::new(&tokens[2..])?;
+                    let id = Identifier::Unresolved(name);
+
+                    let assign = Assignment(id, Box::new(expr));
+
+                    return Ok((assign, rest_tokens));
+                }
+                _ => (),
+            }
+        }
+        Err(Box::new(ScanError::new("Invalid Assignment")))
+    }
+}
+
+impl Evaluate for Assignment {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        let (name, scope) = match &self.0 {
+            Identifier::Unresolved(_name) => {
+                return Err(Box::new(ScanError::new(
+                    "Somehow identifier is not resolved here during var decl",
+                )));
+            }
+            Identifier::Resolved { name, env: scope } => (name, scope),
+        };
+
+        let val = self.1.eval()?;
+
+        let values_map = &scope.borrow_mut().values;
+        let mut values_map = values_map.borrow_mut();
+        values_map.insert(name.to_string(), Some(val));
+
+        Ok(Value::Nil)
     }
 }
 

@@ -1,12 +1,5 @@
 let x = 5
 print x
 
-
-let x = x + 15
-print "The value of x is "
+x = 100
 print x
-
-
-
-print "An expression is defined by {Primary ...whatever... Primary}"
-print "Where primary is any {literal, identifier, or grouping ()}"

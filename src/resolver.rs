@@ -70,8 +70,22 @@ fn resolve_var_decl(vd: &mut VarDecl, env: Rc<RefCell<Environment>>) -> Result<(
     Ok(())
 }
 
+fn resolve_assignment(
+    assign: &mut Assignment,
+    env: Rc<RefCell<Environment>>,
+) -> Result<(), Box<dyn Error>> {
+    let expr = &mut assign.1;
+    resolve_expr(expr, env.clone())?;
+
+    let iden = &mut assign.0;
+    resolve_identifier(iden, env)?;
+
+    Ok(())
+}
+
 fn resolve_expr(expr: &mut Expr, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
     match expr {
+        Expr::Assignment(e) => resolve_assignment(e, env)?,
         Expr::Primary(p) => resolve_primary(p, env)?,
         Expr::Unary(u) => resolve_unary(u, env)?,
         Expr::Binary(b) => resolve_binary(b, env)?,
