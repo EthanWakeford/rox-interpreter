@@ -134,6 +134,41 @@ pub fn resolve_binary(
     Ok(())
 }
 
+fn resolve_stmt(stmt: &mut Statement, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
+    match stmt {
+        Statement::Block(b) => {
+            // New Scope and Environment made
+            let enclosed_env = Environment::new(Some(env.clone()));
+            let enclosed_env = Rc::new(RefCell::new(enclosed_env));
+
+            resolve_block(b, enclosed_env)?;
+        }
+        Statement::PrintStatement(ref mut pstmt) => {
+            let expr = &mut pstmt.0;
+            resolve_expr(expr, env.clone())?;
+        }
+        Statement::ExprStatement(ref mut estmt) => {
+            let expr = &mut estmt.0;
+            resolve_expr(expr, env.clone())?;
+        }
+        Statement::IfStatement(ref mut if_stmt) => {
+            let expr = &mut if_stmt.0;
+            resolve_expr(expr, env.clone())?;
+
+            let stmt = &mut if_stmt.1;
+            resolve_stmt(stmt, env.clone())?;
+
+            match &mut if_stmt.2 {
+                None => (),
+                Some(stmt) => {
+                    resolve_stmt(stmt, env.clone())?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn resolve_block(block: &mut Block, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
     // let mut decls = ast.decls;
     // let global = Rc::new(RefCell::new(Environment::new(None)));
@@ -144,23 +179,9 @@ fn resolve_block(block: &mut Block, env: Rc<RefCell<Environment>>) -> Result<(),
             Declaration::VarDecl(ref mut vd) => {
                 resolve_var_decl(vd, env.clone())?;
             }
-            Declaration::Statement(ref mut stmt) => match stmt {
-                Statement::Block(b) => {
-                    // New Scope and Environment made
-                    let enclosed_env = Environment::new(Some(env.clone()));
-                    let enclosed_env = Rc::new(RefCell::new(enclosed_env));
-
-                    resolve_block(b, enclosed_env)?;
-                }
-                Statement::PrintStatement(ref mut pstmt) => {
-                    let expr = &mut pstmt.0;
-                    resolve_expr(expr, env.clone())?;
-                }
-                Statement::ExprStatement(ref mut estmt) => {
-                    let expr = &mut estmt.0;
-                    resolve_expr(expr, env.clone())?;
-                }
-            },
+            Declaration::Statement(ref mut stmt) => {
+                resolve_stmt(stmt, env.clone())?;
+            }
         }
     }
 
@@ -220,23 +241,9 @@ impl ResolvedAST {
                 Declaration::VarDecl(ref mut vd) => {
                     resolve_var_decl(vd, global.clone())?;
                 }
-                Declaration::Statement(ref mut stmt) => match stmt {
-                    Statement::Block(b) => {
-                        // New Scope and Environment made
-                        let enclosed_env = Environment::new(Some(global.clone()));
-                        let enclosed_env = Rc::new(RefCell::new(enclosed_env));
-
-                        resolve_block(b, enclosed_env)?;
-                    }
-                    Statement::PrintStatement(ref mut pstmt) => {
-                        let expr = &mut pstmt.0;
-                        resolve_expr(expr, global.clone())?;
-                    }
-                    Statement::ExprStatement(ref mut estmt) => {
-                        let expr = &mut estmt.0;
-                        resolve_expr(expr, global.clone())?;
-                    }
-                },
+                Declaration::Statement(ref mut stmt) => {
+                    resolve_stmt(stmt, global.clone())?;
+                }
             }
         }
 

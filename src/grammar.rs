@@ -155,6 +155,7 @@ impl Evaluate for VarDecl {
 pub enum Statement {
     ExprStatement(ExprStatement),
     PrintStatement(PrintStatement),
+    IfStatement(IfStatement),
     Block(Block),
 }
 
@@ -172,6 +173,11 @@ impl Statement {
                     let stmt = Statement::Block(stmt);
                     return Ok((stmt, rest_tokens));
                 }
+                TokenType::If => {
+                    let (stmt, rest_tokens) = IfStatement::new(&tokens[1..])?;
+                    let stmt = Statement::IfStatement(stmt);
+                    return Ok((stmt, rest_tokens));
+                }
                 _ => (),
             };
         }
@@ -187,6 +193,7 @@ impl Evaluate for Statement {
         let value = match self {
             Self::ExprStatement(e) => e.eval()?,
             Self::PrintStatement(p) => p.eval()?,
+            Self::IfStatement(i) => i.eval()?,
             Self::Block(b) => b.eval()?,
         };
 
@@ -246,6 +253,59 @@ impl Evaluate for PrintStatement {
         };
 
         Ok(value)
+    }
+}
+
+#[derive(Debug)]
+pub struct IfStatement(pub Expr, pub Box<Statement>, pub Option<Box<Statement>>);
+
+impl IfStatement {
+    pub fn new(tokens: &[Token]) -> Result<(IfStatement, &[Token]), Box<dyn Error>> {
+        let (expr, rest_tokens) = Expr::new(tokens)?;
+        let (stmt, rest_tokens) = Statement::new(rest_tokens)?;
+
+        if let Some(token) = rest_tokens.get(0) {
+            match token.token_type {
+                TokenType::Else => {
+                    let (else_stmt, rest_tokens) = Statement::new(&rest_tokens[1..])?;
+
+                    let if_stmt = IfStatement(expr, Box::new(stmt), Some(Box::new(else_stmt)));
+                    return Ok((if_stmt, rest_tokens));
+                }
+                _ => (),
+            }
+        }
+
+        let if_stmt = IfStatement(expr, Box::new(stmt), None);
+        Ok((if_stmt, rest_tokens))
+    }
+}
+
+impl Evaluate for IfStatement {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        let expr = self.0.eval()?;
+
+        // Requires expression to resolve to boolean value
+        // Or else throws runtime error
+        match expr {
+            Value::Bool(b) => {
+                if b {
+                    return Ok(self.1.eval()?);
+                } else {
+                    match &self.2 {
+                        Some(else_stmt) => {
+                            return Ok(else_stmt.eval()?);
+                        }
+                        None => {
+                            // No else block to enter, nothing to eval(), keep it moving
+                            return Ok(Value::Nil);
+                        }
+                    }
+                }
+            }
+            _ => (),
+        }
+        Err(Box::new(ScanError::new("Expected a Boolean Value")))
     }
 }
 
@@ -374,6 +434,7 @@ impl Evaluate for Assignment {
 
         // Currently no type checks happening
         // So the langauge is dynamically typed
+        // TODO: make assignments be able to refer to previous enclosures
 
         let val = self.1.eval()?;
 
@@ -808,7 +869,6 @@ impl Evaluate for Identifier {
                 let value = env.borrow().get(name);
 
                 // if empty here not in scope
-                // TODO: look in parent scope
                 match value {
                     None => {
                         let message = format!("This Identifier Is not present, Should have been caught during semantic analysis {}", name);
