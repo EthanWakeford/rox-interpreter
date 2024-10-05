@@ -1,7 +1,7 @@
 use std::{cell::RefCell, error::Error, rc::Rc};
 
 use crate::{
-    resolver::{Environment, Scope},
+    resolver::Environment,
     scanner::{ScanError, Token, TokenType},
 };
 
@@ -249,11 +249,10 @@ impl Evaluate for PrintStatement {
     }
 }
 
+// Currently does not hold its own environment
+// Environment is only owned by identifiers right now
 #[derive(Debug)]
-pub enum Block {
-    Unresolved(Vec<Declaration>),
-    Resolved(Vec<Declaration>, Scope),
-}
+pub struct Block(pub Vec<Declaration>);
 
 impl Block {
     pub fn new(mut tokens: &[Token]) -> Result<(Block, &[Token]), Box<dyn Error>> {
@@ -262,7 +261,7 @@ impl Block {
         while let Some(token) = tokens.get(0) {
             match token.token_type {
                 TokenType::RightBrace => {
-                    let block = Block::Unresolved(decls);
+                    let block = Block(decls);
 
                     return Ok((block, &tokens[1..]));
                 }
@@ -280,22 +279,14 @@ impl Block {
 
 impl Evaluate for Block {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
-        match self {
-            Block::Unresolved(_) => {
-                return Err(Box::new(ScanError::new("Block Should Have Been Resolved")));
-            }
-            // Do we even need scope here????
-            Block::Resolved(decls, _) => {
-                // Returns whatever final expression
-                let mut last_value = Value::Nil;
+        // Returns whatever final expression
+        let mut last_value = Value::Nil;
 
-                for stmt in decls {
-                    last_value = stmt.eval()?;
-                }
-
-                Ok(last_value)
-            }
+        for stmt in &self.0 {
+            last_value = stmt.eval()?;
         }
+
+        Ok(last_value)
     }
 }
 

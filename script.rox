@@ -3,3 +3,11 @@ print x
 
 x = 100
 print x
+{
+    x = 50
+    print "inner"
+    print x
+}
+
+print "outer"
+print x
