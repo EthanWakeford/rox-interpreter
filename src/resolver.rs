@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, cell::RefCell, collections::HashMap, error::Error, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, error::Error, rc::Rc};
 
 use crate::{grammar::*, scanner::ScanError};
 
@@ -134,6 +134,20 @@ pub fn resolve_binary(
     Ok(())
 }
 
+fn resolve_block(block: &mut Block, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
+    match block {
+        Block::Resolved(_, _) => {
+            let message = format!("Somehow trying to resolved an already resolved Block");
+            return Err(Box::new(ScanError::new(message)));
+        }
+        Block::Unresolved(decls) => {
+            let scope = Scope::new(decls)?;
+            block = &mut Block::Resolved(decls, scope)
+        }
+    };
+    Ok(())
+}
+
 #[derive(Debug, Clone)]
 pub struct Environment {
     pub enclosing: Option<Rc<RefCell<Environment>>>,
@@ -148,10 +162,6 @@ impl Environment {
             enclosing,
             values: RefCell::new(variables),
         }
-    }
-
-    fn next(&self) -> Option<Rc<RefCell<Environment>>> {
-        self.enclosing.clone()
     }
 
     pub fn get(&self, name: &String) -> Option<Option<Value>> {
@@ -175,6 +185,7 @@ impl Environment {
     }
 }
 
+#[derive(Debug)]
 pub struct Scope {
     pub decls: Vec<Declaration>,
     pub env: Rc<RefCell<Environment>>,
@@ -182,29 +193,36 @@ pub struct Scope {
 
 impl Scope {
     pub fn new(mut decls: Vec<Declaration>) -> Result<Scope, Box<dyn Error>> {
-        let global = Rc::new(RefCell::new(Environment::new(None)));
+        let env = Rc::new(RefCell::new(Environment::new(None)));
 
         // Resolve declarations
         for decl in decls.as_mut_slice() {
             match decl {
                 Declaration::VarDecl(ref mut vd) => {
-                    resolve_var_decl(vd, global.clone())?;
+                    resolve_var_decl(vd, env.clone())?;
                 }
                 Declaration::Statement(ref mut stmt) => match stmt {
+                    Statement::Block(b) => {
+                        // New Scope and Environment made
+                        let enclosed_env = Environment::new(Some(env));
+                        let enclosed_env = Rc::new(RefCell::new(enclosed_env));
+
+                        resolve_block(b, enclosed_env)?;
+                    }
                     Statement::PrintStatement(ref mut pstmt) => {
                         let expr = &mut pstmt.0;
-                        resolve_expr(expr, global.clone())?;
+                        resolve_expr(expr, env.clone())?;
                     }
                     Statement::ExprStatement(ref mut estmt) => {
                         let expr = &mut estmt.0;
-                        resolve_expr(expr, global.clone())?;
+                        resolve_expr(expr, env.clone())?;
                     }
                 },
             }
         }
 
         // Create scope after resolving declarations
-        let scope = Scope { decls, env: global };
+        let scope = Scope { decls, env };
 
         Ok(scope)
     }

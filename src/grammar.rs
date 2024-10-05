@@ -1,7 +1,7 @@
 use std::{cell::RefCell, error::Error, rc::Rc};
 
 use crate::{
-    resolver::Environment,
+    resolver::{Environment, Scope},
     scanner::{ScanError, Token, TokenType},
 };
 
@@ -155,6 +155,7 @@ impl Evaluate for VarDecl {
 pub enum Statement {
     ExprStatement(ExprStatement),
     PrintStatement(PrintStatement),
+    Block(Block),
 }
 
 impl Statement {
@@ -164,6 +165,11 @@ impl Statement {
                 TokenType::Print => {
                     let (stmt, rest_tokens) = PrintStatement::new(&tokens[1..])?;
                     let stmt = Statement::PrintStatement(stmt);
+                    return Ok((stmt, rest_tokens));
+                }
+                TokenType::LeftBrace => {
+                    let (stmt, rest_tokens) = Block::new(&tokens[1..])?;
+                    let stmt = Statement::Block(stmt);
                     return Ok((stmt, rest_tokens));
                 }
                 _ => (),
@@ -181,6 +187,7 @@ impl Evaluate for Statement {
         let value = match self {
             Self::ExprStatement(e) => e.eval()?,
             Self::PrintStatement(p) => p.eval()?,
+            Self::Block(b) => b.eval()?,
         };
 
         Ok(value)
@@ -239,6 +246,56 @@ impl Evaluate for PrintStatement {
         };
 
         Ok(value)
+    }
+}
+
+#[derive(Debug)]
+pub enum Block {
+    Unresolved(Vec<Declaration>),
+    Resolved(Vec<Declaration>, Scope),
+}
+
+impl Block {
+    pub fn new(mut tokens: &[Token]) -> Result<(Block, &[Token]), Box<dyn Error>> {
+        let mut decls: Vec<Declaration> = Vec::new();
+
+        while let Some(token) = tokens.get(0) {
+            match token.token_type {
+                TokenType::RightBrace => {
+                    let block = Block::Unresolved(decls);
+
+                    return Ok((block, &tokens[1..]));
+                }
+                _ => {
+                    let (decl, rest_tokens) = Declaration::new(tokens)?;
+                    decls.push(decl);
+                    tokens = rest_tokens;
+                }
+            }
+        }
+
+        Err(Box::new(ScanError::new("Expected a Closing Curly Brace")))
+    }
+}
+
+impl Evaluate for Block {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        match self {
+            Block::Unresolved(_) => {
+                return Err(Box::new(ScanError::new("Block Should Have Been Resolved")));
+            }
+            // Do we even need scope here????
+            Block::Resolved(decls, _) => {
+                // Returns whatever final expression
+                let mut last_value = Value::Nil;
+
+                for stmt in decls {
+                    last_value = stmt.eval()?;
+                }
+
+                Ok(last_value)
+            }
+        }
     }
 }
 
