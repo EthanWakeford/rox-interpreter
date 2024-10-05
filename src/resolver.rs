@@ -2,42 +2,6 @@ use std::{cell::RefCell, collections::HashMap, error::Error, rc::Rc};
 
 use crate::{grammar::*, scanner::ScanError};
 
-// 1. Name resolution
-// 2. Create Scopes/Environments
-
-// What value need to be able to refer to their environment???
-// a. Functions
-// b. Variables
-// Both of which are variants of "Primary" enum
-
-// We return a new AST that has names resolved, and Environments created
-// pub fn analyze(ast: AST) -> Result<ResolvedAST, Box<dyn Error>> {
-//     let global = Environment::new();
-
-//     // Resolve declarations
-//     for decl in ast.decls {
-//         match decl {
-//             Declaration::VarDecl(mut vd) => {
-//                 resolve_var_decl(&mut vd, &global)?;
-//             }
-//             Declaration::Statement(stmt) => match stmt {
-//                 Statement::PrintStatement(pstmt) => {
-//                     resolve_expr(pstmt.0, &global)?;
-//                 }
-//                 Statement::ExprStatement(estmt) => {
-//                     resolve_expr(estmt.0, &global)?;
-//                 }
-//             },
-//         }
-//     }
-
-//     // Create scope after resolving declarations
-//     let scope = Scope::new(ast.decls, global)?;
-
-//     let resolved_ast = ResolvedAST::new(scope)?;
-//     Ok(resolved_ast)
-// }
-
 fn resolve_identifier(
     identifier: &mut Identifier,
     env: Rc<RefCell<Environment>>,
@@ -121,7 +85,7 @@ pub fn resolve_primary(
             resolve_identifier(iden, env)?;
         }
         // TODO: do something when its a grouping
-        Primary::Grouping(g) => (),
+        Primary::Grouping(_g) => (),
         // Do nothing if anything else
         _ => (),
     };

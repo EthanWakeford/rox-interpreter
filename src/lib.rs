@@ -10,7 +10,6 @@ mod parser;
 mod resolver;
 mod scanner;
 use grammar::{Evaluate, AST};
-use parser::Parser;
 use resolver::ResolvedAST;
 use scanner::Scanner;
 
