@@ -337,7 +337,6 @@ impl Evaluate for WhileStatement {
         loop {
             let condition = self.0.eval()?;
 
-            // TODO: fix var environment stuff so this isn't broke anymore
             match condition {
                 Value::Bool(b) => {
                     if b == true {
@@ -481,7 +480,6 @@ impl Evaluate for Assignment {
 
         // Currently no type checks happening
         // So the langauge is dynamically typed
-        // TODO: make assignments be able to refer to previous enclosures
 
         let val = self.1.eval()?;
 
@@ -493,7 +491,7 @@ impl Evaluate for Assignment {
 
 // // Not sure about this one but we'll leave for nows
 #[derive(Debug)]
-pub struct Grouping(Box<Expr>);
+pub struct Grouping(pub Box<Expr>);
 
 impl Grouping {
     pub fn new(tokens: &[Token]) -> Result<(Grouping, &[Token]), Box<dyn Error>> {

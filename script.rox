@@ -6,3 +6,7 @@ while y < 10 {
     print y
     y = y + 1
 }
+
+let x = (y + 10)
+
+print x

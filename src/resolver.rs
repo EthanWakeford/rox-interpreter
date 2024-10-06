@@ -97,8 +97,9 @@ pub fn resolve_primary(
         Primary::Identifier(ref mut iden) => {
             resolve_identifier(iden, env)?;
         }
-        // TODO: do something when its a grouping
-        Primary::Grouping(_g) => (),
+        Primary::Grouping(ref mut g) => {
+            resolve_expr(&mut g.0, env.clone())?;
+        }
         // Do nothing if anything else
         _ => (),
     };
