@@ -9,7 +9,7 @@ fn resolve_identifier(
     match identifier {
         Identifier::Unresolved(name) => {
             // Check to see if value has been declared to hashmap
-            let value = env.borrow().get(name);
+            let value = env.borrow().get(name)?;
 
             match value {
                 // If exists, resolve
@@ -55,7 +55,7 @@ fn resolve_var_decl(vd: &mut VarDecl, env: Rc<RefCell<Environment>>) -> Result<(
         }
         Identifier::Unresolved(name) => {
             // We dont' worry about the expression right now, only adding key to map
-            env.borrow().declare(name);
+            env.borrow().declare(name, None);
 
             *iden = Identifier::Resolved {
                 name: name.clone(),
@@ -211,24 +211,49 @@ impl Environment {
         }
     }
 
-    pub fn get(&self, name: &String) -> Option<Option<Value>> {
+    /// Retrives variable value, reads through enclosing scopes
+    pub fn get(&self, name: &String) -> Result<Option<Option<Value>>, Box<dyn Error>> {
         if let Some(value) = self.values.borrow().get(name).cloned() {
-            return Some(value);
+            return Ok(Some(value));
         }
 
         // Search through enclosings
         match &self.enclosing {
             Some(enclosing) => enclosing.borrow().get(name),
-            None => None,
+
+            None => {
+                let message = format!("Attempting to Reference Variable");
+                return Err(Box::new(ScanError::new(message)));
+            }
         }
     }
 
-    pub fn declare(&self, name: &String) {
-        self.values.borrow_mut().insert(name.to_string(), None);
+    /// Creates new variable after "let" stmt in nearest scope
+    ///
+    /// Declares with  None(Value), instantiates with Some(Value)
+    pub fn declare(&self, name: &String, value: Option<Value>) {
+        self.values.borrow_mut().insert(name.to_string(), value);
     }
 
-    pub fn assign(&self, name: &String, value: Option<Value>) {
-        self.values.borrow_mut().insert(name.to_string(), value);
+    /// Updates value to variable, can reach back in to previous scopes
+    ///
+    /// Cannot reassign no Value
+    pub fn assign(&self, name: &String, value: Value) -> Result<(), Box<dyn Error>> {
+        let mut values_map = self.values.borrow_mut();
+
+        if values_map.contains_key(name) {
+            values_map.insert(name.to_string(), Some(value.clone()));
+
+            return Ok(());
+        }
+
+        // Not found so Search through enclosings
+        match &self.enclosing {
+            Some(enclosing) => enclosing.borrow().assign(name, value.clone()),
+            None => Err(Box::new(ScanError::new(
+                "Attempting to reassign Variable not in Scope",
+            ))),
+        }
     }
 }
 

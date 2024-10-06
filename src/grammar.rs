@@ -99,6 +99,7 @@ impl Evaluate for Declaration {
     }
 }
 
+// TODO: allow for declaration but not assignment
 #[derive(Debug)]
 pub struct VarDecl(pub Identifier, pub Expr);
 
@@ -145,7 +146,7 @@ impl Evaluate for VarDecl {
         let val = self.1.eval()?;
 
         // Nil values not set to none rn, just Value::nil
-        scope.borrow().assign(name, Some(val));
+        scope.borrow().declare(name, Some(val));
 
         Ok(Value::Nil)
     }
@@ -484,7 +485,7 @@ impl Evaluate for Assignment {
 
         let val = self.1.eval()?;
 
-        scope.borrow().assign(name, Some(val));
+        scope.borrow().assign(name, val)?;
 
         Ok(Value::Nil)
     }
@@ -962,7 +963,7 @@ impl Evaluate for Identifier {
                 return Err(Box::new(ScanError::new(message)));
             }
             Identifier::Resolved { name, env } => {
-                let value = env.borrow().get(name);
+                let value = env.borrow().get(name)?;
 
                 // if empty here not in scope
                 match value {
