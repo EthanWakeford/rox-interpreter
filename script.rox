@@ -15,3 +15,10 @@ if x > 0 and x < 10 {
 } else {
     print "true is not true"
 }
+
+let y = 5
+while y < 10 {
+    print "looping"
+    print y
+    y = y + 1
+}

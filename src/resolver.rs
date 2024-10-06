@@ -165,6 +165,13 @@ fn resolve_stmt(stmt: &mut Statement, env: Rc<RefCell<Environment>>) -> Result<(
                 }
             }
         }
+        Statement::WhileStatement(ref mut w_stmt) => {
+            let expr = &mut w_stmt.0;
+            resolve_expr(expr, env.clone())?;
+
+            let stmt = &mut w_stmt.1;
+            resolve_stmt(stmt, env.clone())?;
+        }
     }
     Ok(())
 }

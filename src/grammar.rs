@@ -156,6 +156,7 @@ pub enum Statement {
     ExprStatement(ExprStatement),
     PrintStatement(PrintStatement),
     IfStatement(IfStatement),
+    WhileStatement(WhileStatement),
     Block(Block),
 }
 
@@ -178,6 +179,11 @@ impl Statement {
                     let stmt = Statement::IfStatement(stmt);
                     return Ok((stmt, rest_tokens));
                 }
+                TokenType::While => {
+                    let (stmt, rest_tokens) = WhileStatement::new(&tokens[1..])?;
+                    let stmt = Statement::WhileStatement(stmt);
+                    return Ok((stmt, rest_tokens));
+                }
                 _ => (),
             };
         }
@@ -194,6 +200,7 @@ impl Evaluate for Statement {
             Self::ExprStatement(e) => e.eval()?,
             Self::PrintStatement(p) => p.eval()?,
             Self::IfStatement(i) => i.eval()?,
+            Self::WhileStatement(w) => w.eval()?,
             Self::Block(b) => b.eval()?,
         };
 
@@ -306,6 +313,45 @@ impl Evaluate for IfStatement {
             _ => (),
         }
         Err(Box::new(ScanError::new("Expected a Boolean Value")))
+    }
+}
+
+#[derive(Debug)]
+pub struct WhileStatement(pub Expr, pub Box<Statement>);
+
+impl WhileStatement {
+    pub fn new(tokens: &[Token]) -> Result<(WhileStatement, &[Token]), Box<dyn Error>> {
+        let (expr, rest_tokens) = Expr::new(tokens)?;
+
+        let (stmt, rest_tokens) = Statement::new(rest_tokens)?;
+
+        let wstmt = WhileStatement(expr, Box::new(stmt));
+
+        Ok((wstmt, rest_tokens))
+    }
+}
+
+impl Evaluate for WhileStatement {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        loop {
+            let condition = self.0.eval()?;
+
+            // TODO: fix var environment stuff so this isn't broke anymore
+            match condition {
+                Value::Bool(b) => {
+                    if b == true {
+                        self.1.eval()?;
+                    } else {
+                        break;
+                    }
+                }
+                _ => {
+                    return Err(Box::new(ScanError::new("Expected a Boolean Value")));
+                }
+            }
+        }
+
+        Ok(Value::Nil)
     }
 }
 
