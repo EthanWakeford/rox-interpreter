@@ -5,3 +5,13 @@ if x < 4 {
 } else {
     print "x is too large"
 }
+
+
+// if x > 1 if x < 10 if x == 5 print "x is 5" else print "x is not 5" else print "x is too large" else print "x is too small"
+
+
+if x > 0 and x < 10 {
+    print "true is true"
+} else {
+    print "true is not true"
+}

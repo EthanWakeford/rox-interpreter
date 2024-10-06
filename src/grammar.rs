@@ -495,7 +495,43 @@ pub enum Binary {
 
 impl Binary {
     pub fn new(tokens: &[Token]) -> Result<(Binary, &[Token]), Box<dyn Error>> {
-        Binary::equality(tokens)
+        Binary::logic_or(tokens)
+    }
+
+    fn logic_or(tokens: &[Token]) -> Result<(Binary, &[Token]), Box<dyn Error>> {
+        let (mut expr, mut sliced_tokens) = Binary::logic_and(tokens)?;
+
+        while let Some(token) = sliced_tokens.get(0) {
+            let operator = match token.token_type {
+                TokenType::Or => Operator::Or,
+                _ => break,
+            };
+            sliced_tokens = &sliced_tokens[1..]; // Consume the operator
+
+            let (right, rest_tokens) = Binary::logic_and(sliced_tokens)?;
+            expr = Binary::BinaryExpr(Box::new(expr), operator, Box::new(right));
+            sliced_tokens = rest_tokens;
+        }
+
+        Ok((expr, sliced_tokens))
+    }
+
+    fn logic_and(tokens: &[Token]) -> Result<(Binary, &[Token]), Box<dyn Error>> {
+        let (mut expr, mut sliced_tokens) = Binary::equality(tokens)?;
+
+        while let Some(token) = sliced_tokens.get(0) {
+            let operator = match token.token_type {
+                TokenType::And => Operator::And,
+                _ => break,
+            };
+            sliced_tokens = &sliced_tokens[1..]; // Consume the operator
+
+            let (right, rest_tokens) = Binary::equality(sliced_tokens)?;
+            expr = Binary::BinaryExpr(Box::new(expr), operator, Box::new(right));
+            sliced_tokens = rest_tokens;
+        }
+
+        Ok((expr, sliced_tokens))
     }
 
     fn equality(tokens: &[Token]) -> Result<(Binary, &[Token]), Box<dyn Error>> {
@@ -596,6 +632,18 @@ impl Evaluate for Binary {
                 let right = right.eval()?;
 
                 match op {
+                    Operator::Or => match (left, right) {
+                        (Value::Bool(boolright), Value::Bool(boolleft)) => {
+                            Value::Bool(boolleft == true || boolright == true)
+                        }
+                        _ => Value::Bool(false),
+                    },
+                    Operator::And => match (left, right) {
+                        (Value::Bool(boolright), Value::Bool(boolleft)) => {
+                            Value::Bool(boolleft == true && boolright == true)
+                        }
+                        _ => Value::Bool(false),
+                    },
                     // No equality type coercion
                     // Equality between different types allowed but will always be false
                     // Nil is NOT falsy for binary "equal"/"not equal"
@@ -847,6 +895,8 @@ pub enum Operator {
     GreaterEqual,
     Less,
     LessEqual,
+    And,
+    Or,
 }
 
 #[derive(Debug, Clone)]
