@@ -173,6 +173,32 @@ fn resolve_stmt(stmt: &mut Statement, env: Rc<RefCell<Environment>>) -> Result<(
             let stmt = &mut w_stmt.1;
             resolve_stmt(stmt, env.clone())?;
         }
+        Statement::ForStatement(ref mut f_stmt) => {
+            // New Scope and Environment made
+            let enclosed_env = Environment::new(Some(env.clone()));
+            let enclosed_env = Rc::new(RefCell::new(enclosed_env));
+
+            if let Some(init) = &mut f_stmt.initializer {
+                match init {
+                    ForStatementInitializer::Expr(expr) => {
+                        resolve_expr(expr, enclosed_env.clone())?
+                    }
+                    ForStatementInitializer::VarDecl(vd) => {
+                        resolve_var_decl(vd, enclosed_env.clone())?
+                    }
+                }
+            }
+
+            if let Some(condition) = &mut f_stmt.condition {
+                resolve_expr(condition, enclosed_env.clone())?
+            }
+
+            if let Some(increment) = &mut f_stmt.increment {
+                resolve_expr(increment, enclosed_env.clone())?
+            }
+
+            resolve_stmt(&mut f_stmt.body, enclosed_env.clone())?
+        }
     }
     Ok(())
 }

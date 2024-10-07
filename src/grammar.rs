@@ -158,6 +158,7 @@ pub enum Statement {
     PrintStatement(PrintStatement),
     IfStatement(IfStatement),
     WhileStatement(WhileStatement),
+    ForStatement(ForStatement),
     Block(Block),
 }
 
@@ -185,6 +186,11 @@ impl Statement {
                     let stmt = Statement::WhileStatement(stmt);
                     return Ok((stmt, rest_tokens));
                 }
+                TokenType::For => {
+                    let (stmt, rest_tokens) = ForStatement::new(&tokens[1..])?;
+                    let stmt = Statement::ForStatement(stmt);
+                    return Ok((stmt, rest_tokens));
+                }
                 _ => (),
             };
         }
@@ -202,6 +208,7 @@ impl Evaluate for Statement {
             Self::PrintStatement(p) => p.eval()?,
             Self::IfStatement(i) => i.eval()?,
             Self::WhileStatement(w) => w.eval()?,
+            Self::ForStatement(f) => f.eval()?,
             Self::Block(b) => b.eval()?,
         };
 
@@ -346,8 +353,141 @@ impl Evaluate for WhileStatement {
                     }
                 }
                 _ => {
-                    return Err(Box::new(ScanError::new("Expected a Boolean Value")));
+                    return Err(Box::new(ScanError::new(
+                        "Expected a Boolean Value As The Condition",
+                    )));
                 }
+            }
+        }
+
+        Ok(Value::Nil)
+    }
+}
+
+#[derive(Debug)]
+pub enum ForStatementInitializer {
+    VarDecl(VarDecl),
+    Expr(Expr),
+}
+
+#[derive(Debug)]
+pub struct ForStatement {
+    pub initializer: Option<ForStatementInitializer>,
+    pub condition: Option<Expr>,
+    pub increment: Option<Expr>,
+    pub body: Box<Statement>,
+}
+
+impl ForStatement {
+    pub fn new(tokens: &[Token]) -> Result<(ForStatement, &[Token]), Box<dyn Error>> {
+        let rest_tokens = tokens;
+
+        let (initializer, rest_tokens) = match rest_tokens.get(0) {
+            None => {
+                return Err(Box::new(ScanError::new("Expected a For Loop Definition")));
+            }
+            Some(token) => match token.token_type {
+                TokenType::Let => {
+                    let (vd, rest_tokens) = VarDecl::new(&rest_tokens[1..])?;
+                    // Expects a comma at end of initializer
+                    let rest_tokens = Self::expect_comma(rest_tokens)?;
+                    (Some(ForStatementInitializer::VarDecl(vd)), rest_tokens)
+                }
+                TokenType::Comma => (None, &rest_tokens[1..]),
+                _ => {
+                    let (expr, rest_tokens) = Expr::new(rest_tokens)?;
+                    let rest_tokens = Self::expect_comma(rest_tokens)?;
+                    (Some(ForStatementInitializer::Expr(expr)), rest_tokens)
+                }
+            },
+        };
+
+        let (condition, rest_tokens) = match rest_tokens.get(0) {
+            None => {
+                return Err(Box::new(ScanError::new("Expected a For Loop Definition")));
+            }
+            Some(token) => match token.token_type {
+                TokenType::Comma => (None, &rest_tokens[1..]),
+                _ => {
+                    let (expr, rest_tokens) = Expr::new(rest_tokens)?;
+                    let rest_tokens = Self::expect_comma(rest_tokens)?;
+                    (Some(expr), rest_tokens)
+                }
+            },
+        };
+
+        let (increment, rest_tokens) = match rest_tokens.get(0) {
+            None => {
+                return Err(Box::new(ScanError::new("Expected a For Loop Definition")));
+            }
+            Some(token) => match token.token_type {
+                TokenType::Comma => (None, &rest_tokens[1..]),
+                _ => {
+                    let (expr, rest_tokens) = Expr::new(rest_tokens)?;
+                    // No comma at end of increment expected if there is an increment
+                    (Some(expr), rest_tokens)
+                }
+            },
+        };
+
+        let (body, rest_tokens) = Statement::new(rest_tokens)?;
+        let stmt = ForStatement {
+            initializer,
+            condition,
+            increment,
+            body: Box::new(body),
+        };
+
+        Ok((stmt, rest_tokens))
+    }
+
+    fn expect_comma(tokens: &[Token]) -> Result<&[Token], Box<dyn Error>> {
+        match tokens.get(0) {
+            None => {
+                return Err(Box::new(ScanError::new("Invalid For Loop Definition")));
+            }
+            Some(token) => match token.token_type {
+                TokenType::Comma => Ok(&tokens[1..]),
+                _ => Err(Box::new(ScanError::new(
+                    "Expected a Comma in For Loop Definition",
+                ))),
+            },
+        }
+    }
+}
+
+impl Evaluate for ForStatement {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        if let Some(init) = &self.initializer {
+            match init {
+                ForStatementInitializer::Expr(e) => e.eval()?,
+                ForStatementInitializer::VarDecl(vd) => vd.eval()?,
+            };
+        }
+
+        loop {
+            let condition = &self.condition;
+
+            match condition {
+                // No condition, always true
+                // Why would you do this????
+                None => (),
+                Some(condition) => match condition.eval()? {
+                    Value::Bool(b) => {
+                        if b == true {
+                            self.body.eval()?;
+                        } else {
+                            break;
+                        }
+                    }
+                    _ => {
+                        return Err(Box::new(ScanError::new("Expected a Boolean Value")));
+                    }
+                },
+            }
+
+            if let Some(increment) = &self.increment {
+                increment.eval()?;
             }
         }
 
