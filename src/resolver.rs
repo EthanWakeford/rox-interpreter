@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, error::Error, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, error::Error, rc::Rc, time::Instant};
 
 use crate::{grammar::*, scanner::ScanError};
 
@@ -66,6 +66,39 @@ fn resolve_var_decl(vd: &mut VarDecl, env: Rc<RefCell<Environment>>) -> Result<(
     Ok(())
 }
 
+fn resolve_fun_decl(fd: &mut FunDecl, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
+    let iden = &mut fd.0;
+    // match iden {
+    //     Identifier::Resolved { name, env: _ } => {
+    //         let message = format!(
+    //             "Somehow trying to resolved an already resolved value: {}",
+    //             name
+    //         );
+    //         return Err(Box::new(ScanError::new(message)));
+    //     }
+    //     Identifier::Unresolved(name) => {
+    //         let enclosed_env = Environment::new(Some(env.clone()));
+    //         let enclosed_env = Rc::new(RefCell::new(enclosed_env));
+
+    //         *iden = Identifier::Resolved {
+    //             name: name.clone(),
+    //             env: enclosed_env,
+    //         };
+    //     }
+    // }
+
+    // should we make a new env for this??
+    resolve_identifier(iden, env.clone())?;
+
+    let enclosed_env = Environment::new(Some(env.clone()));
+    let enclosed_env = Rc::new(RefCell::new(enclosed_env));
+
+    let stmt = &mut fd.2;
+    resolve_stmt(stmt, enclosed_env)?;
+
+    Ok(())
+}
+
 fn resolve_assignment(
     assign: &mut Assignment,
     env: Rc<RefCell<Environment>>,
@@ -82,9 +115,26 @@ fn resolve_assignment(
 fn resolve_expr(expr: &mut Expr, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
     match expr {
         Expr::Assignment(e) => resolve_assignment(e, env)?,
-        Expr::Primary(p) => resolve_primary(p, env)?,
-        Expr::Unary(u) => resolve_unary(u, env)?,
         Expr::Binary(b) => resolve_binary(b, env)?,
+        Expr::Unary(u) => resolve_unary(u, env)?,
+        Expr::Call(c) => resolve_call(c, env)?,
+        Expr::Primary(p) => resolve_primary(p, env)?,
+    }
+    Ok(())
+}
+
+fn resolve_call(call: &mut Call, env: Rc<RefCell<Environment>>) -> Result<(), Box<dyn Error>> {
+    match call {
+        Call::Primary(p) => resolve_primary(p, env)?,
+        Call::Call(iden, args) => {
+            resolve_identifier(iden, env.clone())?;
+
+            if let Some(args) = args {
+                for expr in args.as_mut_slice() {
+                    resolve_expr(expr, env.clone())?;
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -113,6 +163,7 @@ pub fn resolve_unary(
 ) -> Result<(), Box<dyn Error>> {
     match unary {
         Unary::Primary(p) => resolve_primary(p, env)?,
+        Unary::Call(c) => resolve_call(c, env)?,
         Unary::UnaryExpr(__, u) => resolve_unary(u, env)?,
     }
 
@@ -125,6 +176,7 @@ pub fn resolve_binary(
 ) -> Result<(), Box<dyn Error>> {
     match binary {
         Binary::Primary(p) => resolve_primary(p, env)?,
+        Binary::Call(c) => resolve_call(c, env)?,
         Binary::Unary(u) => resolve_unary(u, env)?,
         Binary::BinaryExpr(left, _, right) => {
             resolve_binary(left, env.clone())?;
@@ -213,6 +265,9 @@ fn resolve_block(block: &mut Block, env: Rc<RefCell<Environment>>) -> Result<(),
             Declaration::VarDecl(ref mut vd) => {
                 resolve_var_decl(vd, env.clone())?;
             }
+            Declaration::FunDecl(ref mut fd) => {
+                resolve_fun_decl(fd, env.clone())?;
+            }
             Declaration::Statement(ref mut stmt) => {
                 resolve_stmt(stmt, env.clone())?;
             }
@@ -300,6 +355,9 @@ impl ResolvedAST {
                 Declaration::VarDecl(ref mut vd) => {
                     resolve_var_decl(vd, global.clone())?;
                 }
+                Declaration::FunDecl(ref mut fd) => {
+                    resolve_fun_decl(fd, global.clone())?;
+                }
                 Declaration::Statement(ref mut stmt) => {
                     resolve_stmt(stmt, global.clone())?;
                 }
@@ -309,4 +367,8 @@ impl ResolvedAST {
         let ast = ResolvedAST { decls, env: global };
         Ok(ast)
     }
+}
+
+fn get_time() -> Instant {
+    Instant::now()
 }

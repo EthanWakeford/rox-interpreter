@@ -6,10 +6,44 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
+pub struct Function {
+    name: String,
+    signature: Vec<String>,
+    body: Statement,
+    env: Rc<RefCell<Environment>>,
+}
+
+impl Function {
+    pub fn call(&self, args: Vec<Value>) -> Result<Value, Box<dyn Error>> {
+        if args.len() != self.signature.len() {
+            let message = format!(
+                "Invalid call signature for function: {}({:?})",
+                self.name, self.signature
+            );
+            return Err(Box::new(ScanError::new(message)));
+        }
+
+        let env = self.env.borrow_mut();
+
+        for (arg_name, arg_value) in self.signature.iter().zip(args.iter()) {
+            env.declare(arg_name, Some(arg_value.clone()));
+        }
+
+        // So I need to create a new env that store the args
+        // args cannot be store in same scope that func is defined in or the inserting here will add values to the calling scope
+        // and I need to connect that to the stmt
+        // somehow
+
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Value {
     Number(f64),
     String(String),
     Bool(bool),
+    Function(Function),
     Nil,
 }
 
@@ -17,7 +51,7 @@ pub trait Evaluate {
     fn eval(&self) -> Result<Value, Box<dyn Error>>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AST {
     pub decls: Vec<Declaration>,
 }
@@ -59,9 +93,10 @@ impl AST {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Declaration {
     VarDecl(VarDecl),
+    FunDecl(FunDecl),
     Statement(Statement),
 }
 
@@ -73,6 +108,12 @@ impl Declaration {
                 TokenType::Let => {
                     let (decl, rest_tokens) = VarDecl::new(&tokens[1..])?;
                     let decl = Declaration::VarDecl(decl);
+
+                    return Ok((decl, rest_tokens));
+                }
+                TokenType::Fun => {
+                    let (decl, rest_tokens) = FunDecl::new(&tokens[1..])?;
+                    let decl = Declaration::FunDecl(decl);
 
                     return Ok((decl, rest_tokens));
                 }
@@ -93,6 +134,7 @@ impl Evaluate for Declaration {
         let value = match self {
             Declaration::Statement(stmt) => stmt.eval()?,
             Declaration::VarDecl(vd) => vd.eval()?,
+            Declaration::FunDecl(fd) => fd.eval()?,
         };
 
         Ok(value)
@@ -100,7 +142,7 @@ impl Evaluate for Declaration {
 }
 
 // TODO: allow for declaration but not assignment
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VarDecl(pub Identifier, pub Expr);
 
 impl VarDecl {
@@ -152,7 +194,89 @@ impl Evaluate for VarDecl {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub struct FunDecl(pub Identifier, pub Vec<String>, pub Statement);
+
+impl FunDecl {
+    pub fn new(tokens: &[Token]) -> Result<(FunDecl, &[Token]), Box<dyn Error>> {
+        let (iden, rest_tokens) = match tokens.get(..=1) {
+            None => {
+                return Err(Box::new(ScanError::new("Expected Function Declaration")));
+            }
+            Some([iden, open_paren]) => {
+                match (iden.token_type.clone(), open_paren.token_type.clone()) {
+                    (TokenType::Identifier(name), TokenType::LeftParen) => (name, &tokens[2..]),
+                    _ => {
+                        return Err(Box::new(ScanError::new("Invalid Function Declaration")));
+                    }
+                }
+            }
+            _ => {
+                return Err(Box::new(ScanError::new("Invalid Function Declaration")));
+            }
+        };
+
+        let mut signature: Vec<String> = Vec::new();
+        let mut rest_tokens = rest_tokens;
+
+        // Does NOT need to be comma separated
+        while let Some(token) = rest_tokens.get(0) {
+            match &token.token_type {
+                TokenType::RightParen => break,
+                TokenType::String(str) => {
+                    if signature.len() >= 255 {
+                        return Err(Box::new(ScanError::new(
+                            "No more than 255 arguments to function allowed",
+                        )));
+                    }
+
+                    signature.push(str.to_string());
+                    rest_tokens = &rest_tokens[1..];
+                }
+                _ => {
+                    return Err(Box::new(ScanError::new("Invalid Function Declaration")));
+                }
+            }
+        }
+        rest_tokens = &rest_tokens[1..];
+
+        let (stmt, rest_tokens) = Statement::new(rest_tokens)?;
+        let iden = Identifier::Unresolved(iden);
+        let fd = FunDecl(iden, signature, stmt);
+
+        Ok((fd, rest_tokens))
+    }
+}
+
+impl Evaluate for FunDecl {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        let (name, scope) = match &self.0 {
+            Identifier::Unresolved(_name) => {
+                return Err(Box::new(ScanError::new(
+                    "Somehow identifier is not resolved here during var decl",
+                )));
+            }
+            Identifier::Resolved { name, env: scope } => (name, scope),
+        };
+
+        let stmt = &self.2;
+        let signature = &self.1;
+
+        let fun = Function {
+            name: name.to_string(),
+            signature: signature.to_vec(),
+            body: stmt.clone(),
+            env: scope.clone(),
+        };
+        let value = Value::Function(fun);
+
+        scope.borrow().declare(name, Some(value));
+
+        Ok(Value::Nil)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Statement {
     ExprStatement(ExprStatement),
     PrintStatement(PrintStatement),
@@ -216,7 +340,7 @@ impl Evaluate for Statement {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprStatement(pub Expr);
 
 impl ExprStatement {
@@ -235,7 +359,7 @@ impl Evaluate for ExprStatement {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PrintStatement(pub Expr);
 
 impl PrintStatement {
@@ -262,6 +386,9 @@ impl Evaluate for PrintStatement {
             Value::Number(num) => {
                 println!("{num}");
             }
+            Value::Function(f) => {
+                println!("[Function {}({:?})]", f.name, f.signature);
+            }
             Value::Nil => {
                 println!("nil");
             }
@@ -271,7 +398,7 @@ impl Evaluate for PrintStatement {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IfStatement(pub Expr, pub Box<Statement>, pub Option<Box<Statement>>);
 
 impl IfStatement {
@@ -324,7 +451,7 @@ impl Evaluate for IfStatement {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WhileStatement(pub Expr, pub Box<Statement>);
 
 impl WhileStatement {
@@ -364,13 +491,13 @@ impl Evaluate for WhileStatement {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ForStatementInitializer {
     VarDecl(VarDecl),
     Expr(Expr),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ForStatement {
     pub initializer: Option<ForStatementInitializer>,
     pub condition: Option<Expr>,
@@ -497,7 +624,7 @@ impl Evaluate for ForStatement {
 
 // Currently does not hold its own environment
 // Environment is only owned by identifiers right now
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Block(pub Vec<Declaration>);
 
 impl Block {
@@ -536,11 +663,12 @@ impl Evaluate for Block {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Assignment(Assignment),
-    Unary(Unary),
     Binary(Binary),
+    Unary(Unary),
+    Call(Call),
     Primary(Primary),
 }
 
@@ -564,9 +692,10 @@ impl Expr {
         let (binary, rest_tokens) = Binary::new(tokens)?;
 
         let expr = match binary {
-            Binary::Primary(p) => Expr::Primary(p),
-            Binary::Unary(u) => Expr::Unary(u),
             Binary::BinaryExpr(_, _, _) => Expr::Binary(binary),
+            Binary::Unary(u) => Expr::Unary(u),
+            Binary::Call(c) => Expr::Call(c),
+            Binary::Primary(p) => Expr::Primary(p),
         };
 
         Ok((expr, rest_tokens))
@@ -577,15 +706,16 @@ impl Evaluate for Expr {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Expr::Assignment(e) => e.eval()?,
-            Expr::Primary(p) => p.eval()?,
-            Expr::Unary(u) => u.eval()?,
             Expr::Binary(b) => b.eval()?,
+            Expr::Unary(u) => u.eval()?,
+            Expr::Call(c) => c.eval()?,
+            Expr::Primary(p) => p.eval()?,
         };
         Ok(value)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Assignment(pub Identifier, pub Box<Expr>);
 
 impl Assignment {
@@ -630,7 +760,7 @@ impl Evaluate for Assignment {
 }
 
 // // Not sure about this one but we'll leave for nows
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Grouping(pub Box<Expr>);
 
 impl Grouping {
@@ -671,10 +801,11 @@ impl Evaluate for Grouping {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Binary {
     BinaryExpr(Box<Binary>, Operator, Box<Binary>),
     Unary(Unary),
+    Call(Call),
     Primary(Primary),
 }
 
@@ -781,8 +912,9 @@ impl Binary {
     fn factor(tokens: &[Token]) -> Result<(Binary, &[Token]), Box<dyn Error>> {
         let (left, mut sliced_tokens) = Unary::new(tokens)?;
         let mut expr = match left {
-            Unary::Primary(p) => Binary::Primary(p),
             Unary::UnaryExpr(_, _) => Binary::Unary(left),
+            Unary::Call(c) => Binary::Call(c),
+            Unary::Primary(p) => Binary::Primary(p),
         };
 
         while let Some(token) = sliced_tokens.get(0) {
@@ -795,8 +927,9 @@ impl Binary {
 
             let (right, rest_tokens) = Unary::new(sliced_tokens)?;
             let rightexpr = match right {
-                Unary::Primary(p) => Binary::Primary(p),
                 Unary::UnaryExpr(_, _) => Binary::Unary(right),
+                Unary::Call(c) => Binary::Call(c),
+                Unary::Primary(p) => Binary::Primary(p),
             };
 
             sliced_tokens = rest_tokens;
@@ -811,6 +944,7 @@ impl Evaluate for Binary {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Binary::Primary(p) => p.eval()?,
+            Binary::Call(c) => c.eval()?,
             Binary::Unary(u) => u.eval()?,
             Binary::BinaryExpr(left, op, right) => {
                 let left = left.eval()?;
@@ -951,15 +1085,16 @@ impl Evaluate for Binary {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UnaryOp {
     Minus,
     Bang,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Unary {
     UnaryExpr(UnaryOp, Box<Unary>),
+    Call(Call),
     Primary(Primary),
 }
 
@@ -991,6 +1126,7 @@ impl Evaluate for Unary {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
         let value = match self {
             Unary::Primary(p) => p.eval()?,
+            Unary::Call(c) => c.eval()?,
             Unary::UnaryExpr(op, primary) => {
                 let prim_val = primary.eval()?;
                 match (op, prim_val) {
@@ -1009,7 +1145,137 @@ impl Evaluate for Unary {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+pub enum Call {
+    Call(Identifier, Option<Vec<Expr>>),
+    Primary(Primary),
+}
+
+impl Call {
+    pub fn new(tokens: &[Token]) -> Result<(Call, &[Token]), Box<dyn Error>> {
+        let (iden, rest_tokens) = match tokens.get(..=1) {
+            None => {
+                return Err(Box::new(ScanError::new("Token Expected But Not Found")));
+            }
+            Some([iden, open_paren]) => {
+                match (iden.token_type.clone(), open_paren.token_type.clone()) {
+                    (TokenType::Identifier(name), TokenType::LeftParen) => (name, &tokens[2..]),
+                    _ => {
+                        let (primary, rest_tokens) = Primary::new(tokens)?;
+                        let call = Call::Primary(primary);
+
+                        return Ok((call, rest_tokens));
+                    }
+                }
+            }
+            _ => {
+                let (primary, rest_tokens) = Primary::new(tokens)?;
+                let call = Call::Primary(primary);
+
+                return Ok((call, rest_tokens));
+            }
+        };
+
+        // parse through args until right paren
+        let mut args_len: u8 = 0;
+        let mut args: Vec<Expr> = Vec::new();
+        let mut rest_tokens = rest_tokens;
+
+        // Does NOT need to be comma separated
+        while let Some(token) = rest_tokens.get(0) {
+            match token.token_type {
+                TokenType::RightParen => break,
+                _ => {
+                    if args_len == 255 {
+                        return Err(Box::new(ScanError::new(
+                            "No more than 255 arguments to function allowed",
+                        )));
+                    }
+
+                    let (expr, temp_rest_tokens) = Expr::new(rest_tokens)?;
+                    args.push(expr);
+                    rest_tokens = temp_rest_tokens;
+                    args_len += 1;
+                }
+            }
+        }
+        rest_tokens = &rest_tokens[1..];
+
+        let iden = Identifier::Unresolved(iden);
+        let args = match args.len() {
+            0 => None,
+            _ => Some(args),
+        };
+        let call = Call::Call(iden, args);
+
+        Ok((call, rest_tokens))
+    }
+}
+
+impl Evaluate for Call {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        let (iden, args) = match self {
+            Call::Primary(p) => {
+                return p.eval();
+            }
+            Call::Call(iden, args) => (iden, args),
+        };
+
+        let value = match iden {
+            Identifier::Unresolved(str) => {
+                let message = format!("This Identifier was Never Resolved {}", str);
+                return Err(Box::new(ScanError::new(message)));
+            }
+            Identifier::Resolved { name, env } => {
+                let value = env.borrow().get(name)?;
+
+                // if empty here not in scope
+                match value {
+                    None => {
+                        let message = format!("This Identifier Is not present, Should have been caught during semantic analysis {}", name);
+                        return Err(Box::new(ScanError::new(message)));
+                    }
+                    Some(val) => match val {
+                        None => {
+                            let message = format!("This Identifier was never initialized, also should have been caught before this {}", name);
+                            return Err(Box::new(ScanError::new(message)));
+                        }
+                        Some(val) => val.clone(),
+                    },
+                }
+            }
+        };
+
+        match value {
+            Value::Function(fun) => {
+                // TODO:
+                // fun.body,
+                // fun.name,
+                // fun.signature,
+                // fun.signature_length
+                let mut args_values: Vec<Value> = Vec::new();
+
+                if let Some(args) = args {
+                    for arg in args {
+                        args_values.push(arg.eval()?);
+                    }
+                }
+
+                // let args = args.map(|arg|arg.eval())
+                // args
+
+                let value = fun.call(args_values)?;
+                Ok(value)
+            }
+            _ => {
+                let message = format!("Identifier: {:?} Not Callable", value);
+                return Err(Box::new(ScanError::new(message)));
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Primary {
     NUMBER(f64),
     STRING(String),
@@ -1068,7 +1334,7 @@ impl Evaluate for Primary {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Operator {
     Minus,
     Plus,
