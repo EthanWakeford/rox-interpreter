@@ -26,6 +26,7 @@ pub fn run_file(filename: &String) -> Result<(), Box<dyn Error>> {
     let ast = AST::new(tokens)?;
 
     let resolved_ast = ResolvedAST::new(ast)?;
+    dbg!(&resolved_ast);
 
     interpret(resolved_ast)?;
 
@@ -61,4 +62,3 @@ pub fn interpret(ast: ResolvedAST) -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
-

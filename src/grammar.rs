@@ -1,32 +1,77 @@
-use std::{cell::RefCell, error::Error, rc::Rc};
+use std::{cell::RefCell, error::Error, fmt::Debug, rc::Rc};
 
 use crate::{
-    resolver::Environment,
+    resolver::{resolve_identifier, resolve_stmt, Environment, Scope},
     scanner::{ScanError, Token, TokenType},
 };
+
+pub trait Callable: Debug {
+    fn call(&mut self, args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>>;
+    fn print(&self) -> String;
+    fn check_arity(&self, args: &Option<Vec<Value>>) -> Result<(), Box<dyn Error>>;
+}
 
 #[derive(Debug, Clone)]
 pub struct Function {
     name: String,
-    signature: Vec<String>,
+    signature: Option<Vec<Identifier>>,
     body: Statement,
-    env: Rc<RefCell<Environment>>,
+    env: Environment,
 }
 
+// Have to resolve body at runtime now
 impl Function {
-    pub fn call(&self, args: Vec<Value>) -> Result<Value, Box<dyn Error>> {
-        if args.len() != self.signature.len() {
-            let message = format!(
-                "Invalid call signature for function: {}({:?})",
-                self.name, self.signature
-            );
-            return Err(Box::new(ScanError::new(message)));
+    fn resolve_body_runtime(&mut self, env: Environment) -> Result<(), Box<dyn Error>> {
+        let scope = Scope {
+            enclosing: None,
+            environment: Rc::new(RefCell::new(env)),
+        };
+
+        let scope = Rc::new(RefCell::new(scope));
+
+        // // Create new env for function body
+        // let enclosed_env = Scope::new(Some(scope));
+        // let enclosed_env = Rc::new(RefCell::new(enclosed_env));
+
+        // Resolve all args into function body env if any
+        if let Some(signature) = &mut self.signature {
+            let _ = signature
+                .iter_mut()
+                .map(|arg| resolve_identifier(arg, scope.clone()));
         }
 
-        let env = self.env.borrow_mut();
+        resolve_stmt(&mut self.body, scope.clone())?;
 
-        for (arg_name, arg_value) in self.signature.iter().zip(args.iter()) {
-            env.declare(arg_name, Some(arg_value.clone()));
+        Ok(())
+    }
+}
+
+impl Callable for Function {
+    fn call(&mut self, args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>> {
+        println!("inside of call");
+
+        self.check_arity(&args)?;
+
+        // Instantiate new environment for call to function
+        let mut call_env = self.env.deep_copy();
+
+        if let Some((args, signature)) = args.zip(self.signature.clone()) {
+            for (arg_iden, arg_value) in signature.iter().zip(args.iter()) {
+                match arg_iden {
+                    Identifier::Unresolved(_) => {
+                        let message = format!(
+                            "Identifier not resolved during call to function {}",
+                            self.print()
+                        );
+                        return Err(Box::new(ScanError::new(message)));
+                    }
+
+                    // Add arguments to call environment
+                    Identifier::Resolved { name, env: _ } => {
+                        call_env.declare(name, Some(arg_value.clone()));
+                    }
+                }
+            }
         }
 
         // So I need to create a new env that store the args
@@ -34,7 +79,38 @@ impl Function {
         // and I need to connect that to the stmt
         // somehow
 
+        // when is the env for stmt defined?? at resolution
+        // I need to access that env, and pass my args to it
+
+        // fun decl captures environment
+
+        self.resolve_body_runtime(call_env)?;
+
         todo!()
+    }
+
+    fn print(&self) -> String {
+        format!("fun {}({:?})", self.name, self.signature)
+    }
+
+    fn check_arity(&self, args: &Option<Vec<Value>>) -> Result<(), Box<dyn Error>> {
+        let expected_arity = self
+            .signature
+            .as_ref()
+            .map_or(0, |signature| signature.len());
+        let passed_arity = args.as_ref().map_or(0, |args| args.len());
+
+        if expected_arity != passed_arity {
+            let message = format!(
+                "Wrong amount of arguments for function {}, expected {}, Found {}",
+                self.print(),
+                expected_arity,
+                passed_arity
+            );
+            Err(Box::new(ScanError::new(message)))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -43,7 +119,7 @@ pub enum Value {
     Number(f64),
     String(String),
     Bool(bool),
-    Function(Function),
+    Function(Rc<RefCell<dyn Callable>>),
     Nil,
 }
 
@@ -176,26 +252,26 @@ impl VarDecl {
 
 impl Evaluate for VarDecl {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
-        let (name, scope) = match &self.0 {
+        let (name, env) = match &self.0 {
             Identifier::Unresolved(_name) => {
                 return Err(Box::new(ScanError::new(
                     "Somehow identifier is not resolved here during var decl",
                 )));
             }
-            Identifier::Resolved { name, env: scope } => (name, scope),
+            Identifier::Resolved { name, env } => (name, env),
         };
 
-        let val = self.1.eval()?;
+        let value = self.1.eval()?;
 
         // Nil values not set to none rn, just Value::nil
-        scope.borrow().declare(name, Some(val));
+        env.borrow_mut().declare(name, Some(value));
 
         Ok(Value::Nil)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct FunDecl(pub Identifier, pub Vec<String>, pub Statement);
+pub struct FunDecl(pub Identifier, pub Option<Vec<Identifier>>, pub Statement);
 
 impl FunDecl {
     pub fn new(tokens: &[Token]) -> Result<(FunDecl, &[Token]), Box<dyn Error>> {
@@ -216,21 +292,22 @@ impl FunDecl {
             }
         };
 
-        let mut signature: Vec<String> = Vec::new();
+        let mut signature: Vec<Identifier> = Vec::new();
         let mut rest_tokens = rest_tokens;
 
         // Does NOT need to be comma separated
         while let Some(token) = rest_tokens.get(0) {
             match &token.token_type {
                 TokenType::RightParen => break,
-                TokenType::String(str) => {
+                TokenType::Identifier(name) => {
                     if signature.len() >= 255 {
                         return Err(Box::new(ScanError::new(
                             "No more than 255 arguments to function allowed",
                         )));
                     }
 
-                    signature.push(str.to_string());
+                    let iden = Identifier::Unresolved(name.to_string());
+                    signature.push(iden);
                     rest_tokens = &rest_tokens[1..];
                 }
                 _ => {
@@ -239,6 +316,11 @@ impl FunDecl {
             }
         }
         rest_tokens = &rest_tokens[1..];
+
+        let signature = match signature.len() {
+            0 => None,
+            _ => Some(signature),
+        };
 
         let (stmt, rest_tokens) = Statement::new(rest_tokens)?;
         let iden = Identifier::Unresolved(iden);
@@ -250,27 +332,30 @@ impl FunDecl {
 
 impl Evaluate for FunDecl {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
-        let (name, scope) = match &self.0 {
+        let (name, env) = match &self.0 {
             Identifier::Unresolved(_name) => {
                 return Err(Box::new(ScanError::new(
                     "Somehow identifier is not resolved here during var decl",
                 )));
             }
-            Identifier::Resolved { name, env: scope } => (name, scope),
+            // This scope is the scope for the function identifier and not function body
+            Identifier::Resolved { name, env } => (name, env),
         };
 
         let stmt = &self.2;
         let signature = &self.1;
 
+        // Add identifier of function to enclosing scope
         let fun = Function {
             name: name.to_string(),
-            signature: signature.to_vec(),
+            signature: signature.clone(),
             body: stmt.clone(),
-            env: scope.clone(),
+            env: env.borrow().deep_copy(),
         };
+        let fun = Rc::new(RefCell::new(fun));
         let value = Value::Function(fun);
 
-        scope.borrow().declare(name, Some(value));
+        env.borrow_mut().declare(name, Some(value));
 
         Ok(Value::Nil)
     }
@@ -387,7 +472,7 @@ impl Evaluate for PrintStatement {
                 println!("{num}");
             }
             Value::Function(f) => {
-                println!("[Function {}({:?})]", f.name, f.signature);
+                println!("{}", f.borrow().print());
             }
             Value::Nil => {
                 println!("nil");
@@ -739,13 +824,13 @@ impl Assignment {
 
 impl Evaluate for Assignment {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
-        let (name, scope) = match &self.0 {
+        let (name, env) = match &self.0 {
             Identifier::Unresolved(_name) => {
                 return Err(Box::new(ScanError::new(
                     "Somehow identifier is not resolved here during var decl",
                 )));
             }
-            Identifier::Resolved { name, env: scope } => (name, scope),
+            Identifier::Resolved { name, env } => (name, env),
         };
 
         // Currently no type checks happening
@@ -753,7 +838,7 @@ impl Evaluate for Assignment {
 
         let val = self.1.eval()?;
 
-        scope.borrow().assign(name, val)?;
+        env.borrow_mut().assign(name, val);
 
         Ok(Value::Nil)
     }
@@ -1214,6 +1299,7 @@ impl Call {
 
 impl Evaluate for Call {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        println!("evaling call");
         let (iden, args) = match self {
             Call::Primary(p) => {
                 return p.eval();
@@ -1221,13 +1307,14 @@ impl Evaluate for Call {
             Call::Call(iden, args) => (iden, args),
         };
 
+        // Make sure value is resolved and in scope
         let value = match iden {
             Identifier::Unresolved(str) => {
                 let message = format!("This Identifier was Never Resolved {}", str);
                 return Err(Box::new(ScanError::new(message)));
             }
             Identifier::Resolved { name, env } => {
-                let value = env.borrow().get(name)?;
+                let value = env.borrow().get(name);
 
                 // if empty here not in scope
                 match value {
@@ -1248,23 +1335,21 @@ impl Evaluate for Call {
 
         match value {
             Value::Function(fun) => {
-                // TODO:
-                // fun.body,
-                // fun.name,
-                // fun.signature,
-                // fun.signature_length
-                let mut args_values: Vec<Value> = Vec::new();
+                let args = match args {
+                    None => None,
+                    Some(args) => {
+                        let mut args_values: Vec<Value> = Vec::new();
 
-                if let Some(args) = args {
-                    for arg in args {
-                        args_values.push(arg.eval()?);
+                        for arg in args {
+                            args_values.push(arg.eval()?);
+                        }
+
+                        Some(args_values)
                     }
-                }
-
-                // let args = args.map(|arg|arg.eval())
-                // args
-
-                let value = fun.call(args_values)?;
+                };
+                println!("gonna call");
+                let mut fun = fun.borrow_mut();
+                let value = fun.call(args)?;
                 Ok(value)
             }
             _ => {
@@ -1367,7 +1452,7 @@ impl Evaluate for Identifier {
                 return Err(Box::new(ScanError::new(message)));
             }
             Identifier::Resolved { name, env } => {
-                let value = env.borrow().get(name)?;
+                let value = env.borrow().get(name);
 
                 // if empty here not in scope
                 match value {
