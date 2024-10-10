@@ -7,5 +7,16 @@ let y = 5
 
 print add(x y)
 
+fun outer() {
+    let q = 5
+
+    fun inner() print q
+}
+
+let o = outer()
+
+// outer()()
+// ^^^ Not supported
+
 
 print "done"

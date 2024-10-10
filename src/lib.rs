@@ -16,7 +16,6 @@ pub fn print_error(line: u32, message: String) {
 }
 
 pub fn run_file(filename: &String) -> Result<(), Box<dyn Error>> {
-    println!("im a runnin {}", filename);
     let input = fs::read_to_string(filename)?;
 
     let mut scanner = Scanner::new(&input);
@@ -34,7 +33,6 @@ pub fn run_file(filename: &String) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn run_prompt() -> Result<(), Box<dyn Error>> {
-    println!("im a promptin");
     loop {
         print!("  ===]> ");
 

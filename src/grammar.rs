@@ -59,7 +59,6 @@ impl Function {
 
 impl Callable for Function {
     fn call(&mut self, args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>> {
-
         self.check_arity(&args)?;
 
         // Instantiate new environment for call to function
@@ -360,9 +359,9 @@ impl Evaluate for FunDecl {
         let fun = Rc::new(RefCell::new(fun));
         let value = Value::Function(fun);
 
-        env.borrow_mut().declare(name, Some(value));
+        env.borrow_mut().declare(name, Some(value.clone()));
 
-        Ok(Value::Nil)
+        Ok(value)
     }
 }
 
@@ -1252,9 +1251,7 @@ impl Call {
             }
             Some([iden, open_paren]) => {
                 match (iden.token_type.clone(), open_paren.token_type.clone()) {
-                    (TokenType::Identifier(name), TokenType::LeftParen) => {
-                        (name, &tokens[2..])
-                    }
+                    (TokenType::Identifier(name), TokenType::LeftParen) => (name, &tokens[2..]),
                     _ => {
                         let (primary, rest_tokens) = Primary::new(tokens)?;
                         let call = Call::Primary(primary);
