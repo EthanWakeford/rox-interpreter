@@ -17,7 +17,7 @@ pub(crate) fn resolve_identifier(
             // Check to see if value has been declared to hashmap
             let env = scope.borrow().get_env_clone();
             let resolved = env.borrow().contains_key(name);
-
+            dbg!(scope.clone());
             match resolved {
                 // If exists, resolve
                 true => {

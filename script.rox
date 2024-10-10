@@ -3,6 +3,18 @@
 let y = 5
 
 
+
 fun xisfun(x) print x
 
 xisfun(5)
+
+fun otherfun(x y) {
+    let z = x + y
+    print "otherfun"
+    print z
+
+}
+
+otherfun(10 5)
+
+print "done"

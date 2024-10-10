@@ -21,26 +21,49 @@ pub struct Function {
 
 // Have to resolve body at runtime now
 impl Function {
-    fn resolve_body_runtime(&mut self, env: Environment) -> Result<(), Box<dyn Error>> {
-        let scope = Scope {
-            enclosing: None,
-            environment: Rc::new(RefCell::new(env)),
-        };
-
-        let scope = Rc::new(RefCell::new(scope));
+    fn resolve_body_runtime(&mut self, scope: Rc<RefCell<Scope>>) -> Result<(), Box<dyn Error>> {
+        println!("runtime resolve");
 
         // // Create new env for function body
         // let enclosed_env = Scope::new(Some(scope));
         // let enclosed_env = Rc::new(RefCell::new(enclosed_env));
 
         // Resolve all args into function body env if any
+        println!("resolving signature");
         if let Some(signature) = &mut self.signature {
+            for iden in signature.iter_mut() {
+                match iden {
+                    Identifier::Resolved { name, env: _ } => {
+                        let message = format!(
+                            "Somehow trying to resolved an already resolved value: {}",
+                            name
+                        );
+                        return Err(Box::new(ScanError::new(message)));
+                    }
+                    Identifier::Unresolved(name) => {
+                        // We dont' worry about the expression right now, only adding key to map
+
+                        println!("resolving iden {}", name);
+                        let env = scope.borrow().get_env_clone();
+                        env.borrow_mut().declare(name, None);
+
+                        *iden = Identifier::Resolved {
+                            name: name.clone(),
+                            env,
+                        };
+                    }
+                }
+            }
             let _ = signature
                 .iter_mut()
                 .map(|arg| resolve_identifier(arg, scope.clone()));
         }
 
+        // dbg!(scope.clone());
+
+        println!("resolving stmt");
         resolve_stmt(&mut self.body, scope.clone())?;
+        println!("here is my call scope after building it: {:?}", scope);
 
         Ok(())
     }
@@ -54,21 +77,29 @@ impl Callable for Function {
 
         // Instantiate new environment for call to function
         let mut call_env = self.env.deep_copy();
+        let scope = Scope {
+            enclosing: None,
+            environment: Rc::new(RefCell::new(call_env)),
+        };
+
+        let scope = Rc::new(RefCell::new(scope));
+        self.resolve_body_runtime(scope)?;
 
         if let Some((args, signature)) = args.zip(self.signature.clone()) {
             for (arg_iden, arg_value) in signature.iter().zip(args.iter()) {
                 match arg_iden {
-                    Identifier::Unresolved(_) => {
+                    Identifier::Unresolved(name) => {
                         let message = format!(
-                            "Identifier not resolved during call to function {}",
+                            "Identifier: ({}) not resolved during call to function {}",
+                            name,
                             self.print()
                         );
                         return Err(Box::new(ScanError::new(message)));
                     }
-
                     // Add arguments to call environment
-                    Identifier::Resolved { name, env: _ } => {
-                        call_env.declare(name, Some(arg_value.clone()));
+                    Identifier::Resolved { name, env } => {
+                        println!("argument was resolved inside of call");
+                        env.borrow_mut().declare(name, Some(arg_value.clone()));
                     }
                 }
             }
@@ -84,13 +115,13 @@ impl Callable for Function {
 
         // fun decl captures environment
 
-        self.resolve_body_runtime(call_env)?;
-
-        todo!()
+        println!("evaling call");
+        // println!("here is my call env: {:?}", call_env);
+        self.body.eval()
     }
 
     fn print(&self) -> String {
-        format!("fun {}({:?})", self.name, self.signature)
+        format!("fun {}()", self.name)
     }
 
     fn check_arity(&self, args: &Option<Vec<Value>>) -> Result<(), Box<dyn Error>> {
@@ -1191,8 +1222,9 @@ impl Unary {
                 TokenType::Bang => UnaryOp::Bang,
                 _ => {
                     let (primary, sliced_tokens) = Primary::new(tokens)?;
+                    let (call, rest_tokens) = Call::new(tokens)?;
 
-                    return Ok((Unary::Primary(primary), sliced_tokens));
+                    return Ok((Unary::Call(call), sliced_tokens));
                 }
             },
             None => {
@@ -1240,11 +1272,17 @@ impl Call {
     pub fn new(tokens: &[Token]) -> Result<(Call, &[Token]), Box<dyn Error>> {
         let (iden, rest_tokens) = match tokens.get(..=1) {
             None => {
-                return Err(Box::new(ScanError::new("Token Expected But Not Found")));
+                let (primary, rest_tokens) = Primary::new(tokens)?;
+                let call = Call::Primary(primary);
+
+                return Ok((call, rest_tokens));
             }
             Some([iden, open_paren]) => {
                 match (iden.token_type.clone(), open_paren.token_type.clone()) {
-                    (TokenType::Identifier(name), TokenType::LeftParen) => (name, &tokens[2..]),
+                    (TokenType::Identifier(name), TokenType::LeftParen) => {
+                        println!("matched a call");
+                        (name, &tokens[2..])
+                    }
                     _ => {
                         let (primary, rest_tokens) = Primary::new(tokens)?;
                         let call = Call::Primary(primary);
@@ -1299,7 +1337,6 @@ impl Call {
 
 impl Evaluate for Call {
     fn eval(&self) -> Result<Value, Box<dyn Error>> {
-        println!("evaling call");
         let (iden, args) = match self {
             Call::Primary(p) => {
                 return p.eval();
@@ -1324,7 +1361,7 @@ impl Evaluate for Call {
                     }
                     Some(val) => match val {
                         None => {
-                            let message = format!("This Identifier was never initialized, also should have been caught before this {}", name);
+                            let message = format!("This Identifier inside call was never initialized, also should have been caught before this {}", name);
                             return Err(Box::new(ScanError::new(message)));
                         }
                         Some(val) => val.clone(),
@@ -1453,6 +1490,10 @@ impl Evaluate for Identifier {
             }
             Identifier::Resolved { name, env } => {
                 let value = env.borrow().get(name);
+                println!(
+                    "inside iden resolved for iden eval here is my env: {:?}",
+                    env
+                );
 
                 // if empty here not in scope
                 match value {
@@ -1462,7 +1503,7 @@ impl Evaluate for Identifier {
                     }
                     Some(val) => match val {
                         None => {
-                            let message = format!("This Identifier was never initialized, also should have been caught before this {}", name);
+                            let message = format!("This Identifier: ({}) was never initialized, also should have been caught before this", name);
                             return Err(Box::new(ScanError::new(message)));
                         }
                         Some(val) => val.clone(),
