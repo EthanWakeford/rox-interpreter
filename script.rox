@@ -1,22 +1,28 @@
-fun add(a b) {
-    a + b
-}
-
-let x = 2
-let y = 5
-
-print add(x y)
-
-fun outer() {
+fun myfun() {
     let q = 5
-
-    fun inner() print q
+    fun inner() {
+        print q
+        q = q + 1
+    }
 }
 
-let o = outer()
+let increment = myfun()
 
-// outer()()
-// ^^^ Not supported
+increment()
+increment()
+increment()
+increment()
+increment()
 
 
-print "done"
+
+let x = 7
+
+fun blah() {
+    print x
+    x = x + 1
+}
+
+blah()
+// x = 10
+blah()

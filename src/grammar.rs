@@ -6,7 +6,7 @@ use crate::{
 };
 
 pub trait Callable: Debug {
-    fn call(&mut self, args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>>;
+    fn call(&self, args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>>;
     fn print(&self) -> String;
     fn check_arity(&self, args: &Option<Vec<Value>>) -> Result<(), Box<dyn Error>>;
 }
@@ -58,27 +58,29 @@ impl Function {
 }
 
 impl Callable for Function {
-    fn call(&mut self, args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>> {
-        self.check_arity(&args)?;
+    fn call(&self, args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>> {
+        let mut function_call = self.clone();
+
+        function_call.check_arity(&args)?;
 
         // Instantiate new environment for call to function
-        let call_env = self.env.deep_copy();
+        let call_env = function_call.env.deep_copy();
         let scope = Scope {
             enclosing: None,
             environment: Rc::new(RefCell::new(call_env)),
         };
 
         let scope = Rc::new(RefCell::new(scope));
-        self.resolve_body_runtime(scope)?;
+        function_call.resolve_body_runtime(scope)?;
 
-        if let Some((args, signature)) = args.zip(self.signature.clone()) {
+        if let Some((args, signature)) = args.zip(function_call.signature.clone()) {
             for (arg_iden, arg_value) in signature.iter().zip(args.iter()) {
                 match arg_iden {
                     Identifier::Unresolved(name) => {
                         let message = format!(
                             "Identifier: ({}) not resolved during call to function {}",
                             name,
-                            self.print()
+                            function_call.print()
                         );
                         return Err(Box::new(ScanError::new(message)));
                     }
@@ -90,7 +92,7 @@ impl Callable for Function {
             }
         }
 
-        self.body.eval()
+        function_call.body.eval()
     }
 
     fn print(&self) -> String {
@@ -354,6 +356,7 @@ impl Evaluate for FunDecl {
             name: name.to_string(),
             signature: signature.clone(),
             body: stmt.clone(),
+            // deep copy creates closure out of current scope
             env: env.borrow().deep_copy(),
         };
         let fun = Rc::new(RefCell::new(fun));

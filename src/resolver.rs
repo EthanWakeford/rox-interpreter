@@ -420,7 +420,7 @@ impl ResolvedAST {
 pub struct GetTime();
 
 impl Callable for GetTime {
-    fn call(&mut self, _args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>> {
+    fn call(&self, _args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>> {
         let time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")
