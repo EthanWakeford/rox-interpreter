@@ -15,22 +15,10 @@ pub(crate) fn resolve_identifier(
     match identifier {
         Identifier::Unresolved(name) => {
             // Check to see if value has been declared to hashmap
-            let env = scope.borrow().get_env_clone();
-            let resolved = env.borrow().contains_key(name);
-            dbg!(scope.clone());
-            match resolved {
-                // If exists, resolve
-                true => {
-                    let name = name.to_string();
-                    // Update identifier
-                    *identifier = Identifier::Resolved { name, env };
-                }
-                // If not, Error
-                false => {
-                    let message = format!("Value referenced before initialization: {}", name,);
-                    return Err(Box::new(ScanError::new(message)));
-                }
-            }
+            let env = scope.borrow().resolve_environment(name)?;
+            let name = name.to_string();
+            // Update identifier
+            *identifier = Identifier::Resolved { name, env };
         }
         Identifier::Resolved { name, env: _ } => {
             let message = format!(
@@ -199,48 +187,48 @@ pub fn resolve_binary(binary: &mut Binary, env: Rc<RefCell<Scope>>) -> Result<()
 
 pub(crate) fn resolve_stmt(
     stmt: &mut Statement,
-    env: Rc<RefCell<Scope>>,
+    scope: Rc<RefCell<Scope>>,
 ) -> Result<(), Box<dyn Error>> {
     match stmt {
         Statement::Block(b) => {
             // New Scope and Environment made
-            let enclosed_env = Scope::new(Some(env.clone()));
-            let enclosed_env = Rc::new(RefCell::new(enclosed_env));
+            let enclosed_scope = Scope::new(Some(scope.clone()));
+            let enclosed_env = Rc::new(RefCell::new(enclosed_scope));
 
             resolve_block(b, enclosed_env)?;
         }
         Statement::PrintStatement(ref mut pstmt) => {
             let expr = &mut pstmt.0;
-            resolve_expr(expr, env.clone())?;
+            resolve_expr(expr, scope.clone())?;
         }
         Statement::ExprStatement(ref mut estmt) => {
             let expr = &mut estmt.0;
-            resolve_expr(expr, env.clone())?;
+            resolve_expr(expr, scope.clone())?;
         }
         Statement::IfStatement(ref mut if_stmt) => {
             let expr = &mut if_stmt.0;
-            resolve_expr(expr, env.clone())?;
+            resolve_expr(expr, scope.clone())?;
 
             let stmt = &mut if_stmt.1;
-            resolve_stmt(stmt, env.clone())?;
+            resolve_stmt(stmt, scope.clone())?;
 
             match &mut if_stmt.2 {
                 None => (),
                 Some(stmt) => {
-                    resolve_stmt(stmt, env.clone())?;
+                    resolve_stmt(stmt, scope.clone())?;
                 }
             }
         }
         Statement::WhileStatement(ref mut w_stmt) => {
             let expr = &mut w_stmt.0;
-            resolve_expr(expr, env.clone())?;
+            resolve_expr(expr, scope.clone())?;
 
             let stmt = &mut w_stmt.1;
-            resolve_stmt(stmt, env.clone())?;
+            resolve_stmt(stmt, scope.clone())?;
         }
         Statement::ForStatement(ref mut f_stmt) => {
             // New Scope and Environment made
-            let enclosed_env = Scope::new(Some(env.clone()));
+            let enclosed_env = Scope::new(Some(scope.clone()));
             let enclosed_env = Rc::new(RefCell::new(enclosed_env));
 
             if let Some(init) = &mut f_stmt.initializer {
@@ -269,9 +257,6 @@ pub(crate) fn resolve_stmt(
 }
 
 fn resolve_block(block: &mut Block, env: Rc<RefCell<Scope>>) -> Result<(), Box<dyn Error>> {
-    // let mut decls = ast.decls;
-    // let global = Rc::new(RefCell::new(Environment::new(None)));
-
     // Resolve declarations
     for decl in &mut block.0 {
         match decl {

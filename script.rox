@@ -1,20 +1,11 @@
-// if x > 1 if x < 10 if x == 5 print "x is 5" else print "x is not 5" else print "x is too large" else print "x is too small"
-
-let y = 5
-
-
-
-fun xisfun(x) print x
-
-xisfun(5)
-
-fun otherfun(x y) {
-    let z = x + y
-    print "otherfun"
-    print z
-
+fun add(a b) {
+    a + b
 }
 
-otherfun(10 5)
+let x = 2
+let y = 5
+
+print add(x y)
+
 
 print "done"

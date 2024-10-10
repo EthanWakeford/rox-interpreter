@@ -22,14 +22,7 @@ pub struct Function {
 // Have to resolve body at runtime now
 impl Function {
     fn resolve_body_runtime(&mut self, scope: Rc<RefCell<Scope>>) -> Result<(), Box<dyn Error>> {
-        println!("runtime resolve");
-
-        // // Create new env for function body
-        // let enclosed_env = Scope::new(Some(scope));
-        // let enclosed_env = Rc::new(RefCell::new(enclosed_env));
-
         // Resolve all args into function body env if any
-        println!("resolving signature");
         if let Some(signature) = &mut self.signature {
             for iden in signature.iter_mut() {
                 match iden {
@@ -43,7 +36,6 @@ impl Function {
                     Identifier::Unresolved(name) => {
                         // We dont' worry about the expression right now, only adding key to map
 
-                        println!("resolving iden {}", name);
                         let env = scope.borrow().get_env_clone();
                         env.borrow_mut().declare(name, None);
 
@@ -59,11 +51,7 @@ impl Function {
                 .map(|arg| resolve_identifier(arg, scope.clone()));
         }
 
-        // dbg!(scope.clone());
-
-        println!("resolving stmt");
         resolve_stmt(&mut self.body, scope.clone())?;
-        println!("here is my call scope after building it: {:?}", scope);
 
         Ok(())
     }
@@ -71,12 +59,11 @@ impl Function {
 
 impl Callable for Function {
     fn call(&mut self, args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>> {
-        println!("inside of call");
 
         self.check_arity(&args)?;
 
         // Instantiate new environment for call to function
-        let mut call_env = self.env.deep_copy();
+        let call_env = self.env.deep_copy();
         let scope = Scope {
             enclosing: None,
             environment: Rc::new(RefCell::new(call_env)),
@@ -98,25 +85,12 @@ impl Callable for Function {
                     }
                     // Add arguments to call environment
                     Identifier::Resolved { name, env } => {
-                        println!("argument was resolved inside of call");
                         env.borrow_mut().declare(name, Some(arg_value.clone()));
                     }
                 }
             }
         }
 
-        // So I need to create a new env that store the args
-        // args cannot be store in same scope that func is defined in or the inserting here will add values to the calling scope
-        // and I need to connect that to the stmt
-        // somehow
-
-        // when is the env for stmt defined?? at resolution
-        // I need to access that env, and pass my args to it
-
-        // fun decl captures environment
-
-        println!("evaling call");
-        // println!("here is my call env: {:?}", call_env);
         self.body.eval()
     }
 
@@ -1221,10 +1195,9 @@ impl Unary {
                 TokenType::Minus => UnaryOp::Minus,
                 TokenType::Bang => UnaryOp::Bang,
                 _ => {
-                    let (primary, sliced_tokens) = Primary::new(tokens)?;
                     let (call, rest_tokens) = Call::new(tokens)?;
 
-                    return Ok((Unary::Call(call), sliced_tokens));
+                    return Ok((Unary::Call(call), rest_tokens));
                 }
             },
             None => {
@@ -1280,7 +1253,6 @@ impl Call {
             Some([iden, open_paren]) => {
                 match (iden.token_type.clone(), open_paren.token_type.clone()) {
                     (TokenType::Identifier(name), TokenType::LeftParen) => {
-                        println!("matched a call");
                         (name, &tokens[2..])
                     }
                     _ => {
@@ -1384,7 +1356,6 @@ impl Evaluate for Call {
                         Some(args_values)
                     }
                 };
-                println!("gonna call");
                 let mut fun = fun.borrow_mut();
                 let value = fun.call(args)?;
                 Ok(value)
@@ -1490,10 +1461,6 @@ impl Evaluate for Identifier {
             }
             Identifier::Resolved { name, env } => {
                 let value = env.borrow().get(name);
-                println!(
-                    "inside iden resolved for iden eval here is my env: {:?}",
-                    env
-                );
 
                 // if empty here not in scope
                 match value {
