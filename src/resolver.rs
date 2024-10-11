@@ -84,58 +84,42 @@ fn resolve_fun_decl(fd: &mut FunDecl, scope: Rc<RefCell<Scope>>) -> Result<(), B
         }
     }
 
-    // Name resolution for function body has to happen at runtime now because of how I built my code
-
-    // // Create new env for function body
-    // let enclosed_env = Scope::new(Some(scope));
-    // let enclosed_env = Rc::new(RefCell::new(enclosed_env));
-
-    // // Resolve all args into function body env if any
-    // if let Some(signature) = &mut fd.1 {
-    //     let _ = signature
-    //         .iter_mut()
-    //         .map(|arg| resolve_identifier(arg, enclosed_env.clone()));
-    // }
-
-    // let stmt = &mut fd.2;
-    // resolve_stmt(stmt, enclosed_env.clone())?;
-
     Ok(())
 }
 
 fn resolve_assignment(
     assign: &mut Assignment,
-    env: Rc<RefCell<Scope>>,
+    scope: Rc<RefCell<Scope>>,
 ) -> Result<(), Box<dyn Error>> {
     let expr = &mut assign.1;
-    resolve_expr(expr, env.clone())?;
+    resolve_expr(expr, scope.clone())?;
 
     let iden = &mut assign.0;
-    resolve_identifier(iden, env)?;
+    resolve_identifier(iden, scope)?;
 
     Ok(())
 }
 
-fn resolve_expr(expr: &mut Expr, env: Rc<RefCell<Scope>>) -> Result<(), Box<dyn Error>> {
+fn resolve_expr(expr: &mut Expr, scope: Rc<RefCell<Scope>>) -> Result<(), Box<dyn Error>> {
     match expr {
-        Expr::Assignment(e) => resolve_assignment(e, env)?,
-        Expr::Binary(b) => resolve_binary(b, env)?,
-        Expr::Unary(u) => resolve_unary(u, env)?,
-        Expr::Call(c) => resolve_call(c, env)?,
-        Expr::Primary(p) => resolve_primary(p, env)?,
+        Expr::Assignment(e) => resolve_assignment(e, scope)?,
+        Expr::Binary(b) => resolve_binary(b, scope)?,
+        Expr::Unary(u) => resolve_unary(u, scope)?,
+        Expr::Call(c) => resolve_call(c, scope)?,
+        Expr::Primary(p) => resolve_primary(p, scope)?,
     }
     Ok(())
 }
 
-fn resolve_call(call: &mut Call, env: Rc<RefCell<Scope>>) -> Result<(), Box<dyn Error>> {
+fn resolve_call(call: &mut Call, scope: Rc<RefCell<Scope>>) -> Result<(), Box<dyn Error>> {
     match call {
-        Call::Primary(p) => resolve_primary(p, env)?,
+        Call::Primary(p) => resolve_primary(p, scope)?,
         Call::Call(iden, args) => {
-            resolve_identifier(iden, env.clone())?;
+            resolve_identifier(iden, scope.clone())?;
 
             if let Some(args) = args {
                 for expr in args.as_mut_slice() {
-                    resolve_expr(expr, env.clone())?;
+                    resolve_expr(expr, scope.clone())?;
                 }
             }
         }
@@ -145,14 +129,14 @@ fn resolve_call(call: &mut Call, env: Rc<RefCell<Scope>>) -> Result<(), Box<dyn 
 
 pub fn resolve_primary(
     primary: &mut Primary,
-    env: Rc<RefCell<Scope>>,
+    scope: Rc<RefCell<Scope>>,
 ) -> Result<(), Box<dyn Error>> {
     match primary {
         Primary::Identifier(ref mut iden) => {
-            resolve_identifier(iden, env)?;
+            resolve_identifier(iden, scope)?;
         }
         Primary::Grouping(ref mut g) => {
-            resolve_expr(&mut g.0, env.clone())?;
+            resolve_expr(&mut g.0, scope.clone())?;
         }
         // Do nothing if anything else
         _ => (),
@@ -256,18 +240,18 @@ pub(crate) fn resolve_stmt(
     Ok(())
 }
 
-fn resolve_block(block: &mut Block, env: Rc<RefCell<Scope>>) -> Result<(), Box<dyn Error>> {
+fn resolve_block(block: &mut Block, scope: Rc<RefCell<Scope>>) -> Result<(), Box<dyn Error>> {
     // Resolve declarations
     for decl in &mut block.0 {
         match decl {
             Declaration::VarDecl(ref mut vd) => {
-                resolve_var_decl(vd, env.clone())?;
+                resolve_var_decl(vd, scope.clone())?;
             }
             Declaration::FunDecl(ref mut fd) => {
-                resolve_fun_decl(fd, env.clone())?;
+                resolve_fun_decl(fd, scope.clone())?;
             }
             Declaration::Statement(ref mut stmt) => {
-                resolve_stmt(stmt, env.clone())?;
+                resolve_stmt(stmt, scope.clone())?;
             }
         }
     }
