@@ -1356,7 +1356,7 @@ impl Evaluate for Call {
                         Some(args_values)
                     }
                 };
-                let mut fun = fun.borrow_mut();
+                let fun = fun.borrow_mut();
                 let value = fun.call(args)?;
                 Ok(value)
             }
