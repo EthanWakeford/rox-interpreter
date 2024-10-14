@@ -84,6 +84,8 @@ fn resolve_fun_decl(fd: &mut FunDecl, scope: Rc<RefCell<Scope>>) -> Result<(), B
         }
     }
 
+    
+
     Ok(())
 }
 
