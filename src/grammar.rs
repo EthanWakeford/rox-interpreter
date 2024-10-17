@@ -270,7 +270,7 @@ impl VarDecl {
             }
         };
 
-        let identifier = Identifier(identifier.to_string());
+        let identifier = Identifier::Unresolved(identifier.to_string());
         let rest_tokens = &tokens[2..];
         let (expr, rest_tokens) = Expr::new(rest_tokens)?;
 
@@ -334,7 +334,7 @@ impl FunDecl {
                         )));
                     }
 
-                    let iden = Identifier(name.to_string());
+                    let iden = Identifier::Unresolved(name.to_string());
                     signature.push(iden);
                     rest_tokens = &rest_tokens[1..];
                 }
@@ -351,7 +351,7 @@ impl FunDecl {
         };
 
         let (stmt, rest_tokens) = Statement::new(rest_tokens)?;
-        let iden = Identifier(iden);
+        let iden = Identifier::Unresolved(iden);
         let fd = FunDecl(iden, signature, stmt);
 
         Ok((fd, rest_tokens))
@@ -838,7 +838,7 @@ impl Assignment {
             match (identifier.token_type.clone(), assign_op.token_type.clone()) {
                 (TokenType::Identifier(name), TokenType::Equal) => {
                     let (expr, rest_tokens) = Expr::new(&tokens[2..])?;
-                    let id = Identifier(name);
+                    let id = Identifier::Unresolved(name);
 
                     let assign = Assignment(id, Box::new(expr));
 
@@ -1318,7 +1318,7 @@ impl Call {
         }
         rest_tokens = &rest_tokens[1..];
 
-        let iden = Identifier(iden);
+        let iden = Identifier::Unresolved(iden);
         let args = match args.len() {
             0 => None,
             _ => Some(args),
@@ -1421,7 +1421,9 @@ impl Primary {
 
                 return Ok((Primary::Grouping(grouping), rest_tokens));
             }
-            TokenType::Identifier(str) => Primary::Identifier(Identifier(str.to_string())),
+            TokenType::Identifier(str) => {
+                Primary::Identifier(Identifier::Unresolved(str.to_string()))
+            }
             token => {
                 let message = format!("Unexpected Token: {:?}", token);
                 return Err(Box::new(ScanError::new(message)));
@@ -1464,35 +1466,41 @@ pub enum Operator {
 }
 
 #[derive(Debug, Clone)]
-pub struct Identifier(String);
+pub enum Identifier {
+    Unresolved(String),
+    Resolved {
+        name: String,
+        env: Rc<RefCell<Environment>>,
+    },
+}
 
-// impl Evaluate for Identifier {
-//     fn eval(&self) -> Result<Value, Box<dyn Error>> {
-//         let value = match self {
-//             Identifier::Unresolved(str) => {
-//                 let message = format!("This Identifier was Never Resolved {}", str);
-//                 return Err(Box::new(ScanError::new(message)));
-//             }
-//             Identifier::Resolved { name, env } => {
-//                 let value = env.borrow().get(name);
+impl Evaluate for Identifier {
+    fn eval(&self) -> Result<Value, Box<dyn Error>> {
+        let value = match self {
+            Identifier::Unresolved(str) => {
+                let message = format!("This Identifier was Never Resolved {}", str);
+                return Err(Box::new(ScanError::new(message)));
+            }
+            Identifier::Resolved { name, env } => {
+                let value = env.borrow().get(name);
 
-//                 // if empty here not in scope
-//                 match value {
-//                     None => {
-//                         let message = format!("This Identifier Is not present, Should have been caught during semantic analysis {}", name);
-//                         return Err(Box::new(ScanError::new(message)));
-//                     }
-//                     Some(val) => match val {
-//                         None => {
-//                             let message = format!("This Identifier: ({}) was never initialized, also should have been caught before this", name);
-//                             return Err(Box::new(ScanError::new(message)));
-//                         }
-//                         Some(val) => val.clone(),
-//                     },
-//                 }
-//             }
-//         };
+                // if empty here not in scope
+                match value {
+                    None => {
+                        let message = format!("This Identifier Is not present, Should have been caught during semantic analysis {}", name);
+                        return Err(Box::new(ScanError::new(message)));
+                    }
+                    Some(val) => match val {
+                        None => {
+                            let message = format!("This Identifier: ({}) was never initialized, also should have been caught before this", name);
+                            return Err(Box::new(ScanError::new(message)));
+                        }
+                        Some(val) => val.clone(),
+                    },
+                }
+            }
+        };
 
-//         Ok(value)
-//     }
-// }
+        Ok(value)
+    }
+}
