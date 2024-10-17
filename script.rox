@@ -1,3 +1,5 @@
+let startTime = getTime()
+
 fun myfun() {
     let q = 5
     fun inner() {
@@ -41,3 +43,12 @@ fun rec(r) {
 }
 
 rec(1)
+
+
+print ""
+
+
+let endTime = getTime()
+
+print "Time Elapsed:"
+print endTime - startTime

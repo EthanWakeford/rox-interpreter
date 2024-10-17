@@ -20,19 +20,10 @@ pub struct Function {
 
 impl Callable for Function {
     fn call(&self, args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>> {
+        // Each call clones the function
         let function_call = self.clone();
 
         function_call.check_arity(&args)?;
-
-        // Instantiate new environment for call to function
-        // let call_env = function_call.closure.deep_copy();
-        // let scope = Scope {
-        //     enclosing: None,
-        //     environment: Rc::new(RefCell::new(call_env)),
-        // };
-
-        // let scope = Rc::new(RefCell::new(scope));
-        // function_call.resolve_body_runtime(scope)?;
 
         if let Some((args, signature)) = args.zip(function_call.signature.clone()) {
             for (arg_iden, arg_value) in signature.iter().zip(args.iter()) {

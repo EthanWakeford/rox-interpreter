@@ -412,6 +412,14 @@ impl ResolvedAST {
         let mut decls = ast.decls;
         let global = Rc::new(RefCell::new(Scope::new(None)));
 
+        let get_time_native_func = Rc::new(RefCell::new(GetTime()));
+
+        let global_env = global.borrow().get_env_clone();
+        global_env.borrow_mut().declare(
+            &"getTime".to_string(),
+            Some(Value::Function(get_time_native_func)),
+        );
+
         // Resolve declarations
         for decl in decls.as_mut_slice() {
             match decl {
