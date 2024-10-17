@@ -73,7 +73,6 @@ fn resolve_fun_decl(fd: &mut FunDecl, scope: Rc<RefCell<Scope>>) -> Result<(), B
         }
         Identifier::Unresolved(name) => {
             // func iden is now owned by scope its defined in
-
             let env = scope.borrow().get_env_clone();
             env.borrow_mut().declare(name, None);
 
@@ -81,10 +80,43 @@ fn resolve_fun_decl(fd: &mut FunDecl, scope: Rc<RefCell<Scope>>) -> Result<(), B
                 name: name.clone(),
                 env,
             };
+
+            let signature = &mut fd.1;
+            let body = &mut fd.2;
+
+            let body_scope = Scope::new(Some(scope));
+            let body_scope = Rc::new(RefCell::new(body_scope));
+
+            // add signature to body scope
+            if let Some(signature) = signature {
+                for iden in signature.iter_mut() {
+                    match iden {
+                        Identifier::Resolved { name, env: _ } => {
+                            let message = format!(
+                                "Somehow trying to resolved an already resolved value: {}",
+                                name
+                            );
+                            return Err(Box::new(ScanError::new(message)));
+                        }
+                        Identifier::Unresolved(name) => {
+                            // We dont' worry about the expression right now, only adding key to map
+
+                            let env = body_scope.borrow().get_env_clone();
+                            env.borrow_mut().declare(name, None);
+
+                            *iden = Identifier::Resolved {
+                                name: name.clone(),
+                                env,
+                            };
+                        }
+                    }
+                }
+            }
+
+            // resolve body
+            resolve_stmt(body, body_scope)?;
         }
     }
-
-    
 
     Ok(())
 }

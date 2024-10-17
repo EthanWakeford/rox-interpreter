@@ -23,6 +23,21 @@ fun blah() {
     x = x + 1
 }
 
+print ""
+
 blah()
 // x = 10
 blah()
+
+
+print ""
+
+fun rec(r) {
+    print "printing r"
+    print r
+    if r < 5 {
+        rec(r + 1)
+     }
+}
+
+rec(1)

@@ -1,7 +1,7 @@
 use std::{cell::RefCell, error::Error, fmt::Debug, rc::Rc};
 
 use crate::{
-    resolver::{resolve_identifier, resolve_stmt, Environment, Scope},
+    resolver::Environment,
     scanner::{ScanError, Token, TokenType},
 };
 
@@ -16,84 +16,23 @@ pub struct Function {
     name: String,
     signature: Option<Vec<Identifier>>,
     body: Statement,
-    closure: Environment,
-}
-
-// TODO:
-
-// This is my plan for scoping moving forwards:
-
-// scopes exist separately from identifiers. Scopes are new construct returned by top level resolution function
-// Bring back interpreter than can leverage the eval functions. (How much this is possible/not possible we shall see)
-// indetifier no longer is resolved/unresolved enum. no longer has own eval function. (resolution functions now no longer have to mutate, can simplify other things as a result)
-// interpreter just keeps track of the scope its in and then uses the identifier name to lookup to value. (I don't think I need to implement the books scope jumping count construction, just search through enclosures)
-// When interpreting using new scoping, how do I always know what scope to enter into when scope encloses around multiple??
-
-// How are functions handled here????
-
-// FD needs at resolution time: a resolved body/identifier. Body needs to be resolved to the scope owned by the function
-// Perhaps theres a way for the scope construct to know what function it belongs to. This part might be tricky if that isn't a good solution
-// FD at runtime needs to create static copy of its enclosure, needs to add its identfier its enclosing scope, function body scope needs to be able to refer to itself
-
-// Call at resolution: Just resolve the expression arguments
-// Call at runtime: eval arg exprs, run callable on function
-
-// Function Callable: static copy of function body env, so that successive calls don't fuck with each other's environments
-// Add arguments to new copied env, eval statement, return value, done
-
-// Have to resolve body at runtime now
-impl Function {
-    fn resolve_body_runtime(&mut self, scope: Rc<RefCell<Scope>>) -> Result<(), Box<dyn Error>> {
-        // Resolve all args into function body env if any
-        if let Some(signature) = &mut self.signature {
-            for iden in signature.iter_mut() {
-                match iden {
-                    Identifier::Resolved { name, env: _ } => {
-                        let message = format!(
-                            "Somehow trying to resolved an already resolved value: {}",
-                            name
-                        );
-                        return Err(Box::new(ScanError::new(message)));
-                    }
-                    Identifier::Unresolved(name) => {
-                        // We dont' worry about the expression right now, only adding key to map
-
-                        let env = scope.borrow().get_env_clone();
-                        env.borrow_mut().declare(name, None);
-
-                        *iden = Identifier::Resolved {
-                            name: name.clone(),
-                            env,
-                        };
-                    }
-                }
-            }
-            let _ = signature
-                .iter_mut()
-                .map(|arg| resolve_identifier(arg, scope.clone()));
-        }
-
-        resolve_stmt(&mut self.body, scope.clone())?;
-
-        Ok(())
-    }
 }
 
 impl Callable for Function {
     fn call(&self, args: Option<Vec<Value>>) -> Result<Value, Box<dyn Error>> {
-        let mut function_call = self.clone();
+        let function_call = self.clone();
 
         function_call.check_arity(&args)?;
 
         // Instantiate new environment for call to function
-        let call_env = function_call.closure.deep_copy();
-        let scope = Scope {
-            enclosing: None,
-            environment: Rc::new(RefCell::new(call_env)),
-        };
+        // let call_env = function_call.closure.deep_copy();
+        // let scope = Scope {
+        //     enclosing: None,
+        //     environment: Rc::new(RefCell::new(call_env)),
+        // };
 
-        let scope = Rc::new(RefCell::new(scope));
-        function_call.resolve_body_runtime(scope)?;
+        // let scope = Rc::new(RefCell::new(scope));
+        // function_call.resolve_body_runtime(scope)?;
 
         if let Some((args, signature)) = args.zip(function_call.signature.clone()) {
             for (arg_iden, arg_value) in signature.iter().zip(args.iter()) {
@@ -378,8 +317,6 @@ impl Evaluate for FunDecl {
             name: name.to_string(),
             signature: signature.clone(),
             body: stmt.clone(),
-            // deep copy creates closure out of current scope
-            closure: env.borrow().deep_copy(),
         };
         let fun = Rc::new(RefCell::new(fun));
         let value = Value::Function(fun);
@@ -1378,7 +1315,7 @@ impl Evaluate for Call {
                         Some(args_values)
                     }
                 };
-                let fun = fun.borrow_mut();
+                let fun = fun.borrow();
                 let value = fun.call(args)?;
                 Ok(value)
             }
